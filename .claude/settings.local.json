@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills *)",
+      "Bash(claude mcp *)",
+      "Bash(npm --version)",
+      "Read(//private/tmp/**)",
+      "Bash(rm -rf tn-scaffold)",
+      "Bash(npm create *)",
+      "Bash(npx vite *)",
+      "mcp__claude_ai_Figma__get_screenshot",
+      "mcp__claude_ai_Figma__get_metadata",
+      "Bash(curl -s -o /tmp/fab_screenshot.png \"https://www.figma.com/api/mcp/asset/7dc48900-bbcd-4a30-8ff3-a818038c7894\")",
+      "Read(//tmp/**)",
+      "Bash(python3 *)",
+      "mcp__claude_ai_Figma__get_variable_defs",
+      "Bash(curl -s -o /tmp/header.png \"https://www.figma.com/api/mcp/asset/1f00c637-5936-4aa6-874c-d414bf703a42\")",
+      "mcp__claude_ai_Figma__get_design_context",
+      "Bash(perl -pi -e \"s/font-\\\\['Roboto_Mono:\\(?:Regular|Medium|Semibold|Bold\\)'\\\\]/font-mono/g\" src/sections/*.tsx)",
+      "Bash(npx tsc *)",
+      "mcp__chrome-devtools__new_page",
+      "mcp__chrome-devtools__resize_page",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__list_console_messages",
+      "Bash(npm run *)",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__evaluate_script",
+      "Bash(npm install *)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pkill -f vite)",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__fill",
+      "Bash(cd *)",
+      "mcp__chrome-devtools__click",
+      "Bash(grep -n \"grid-cols-12\\\\|DraggablePanel\\\\|col-span\\\\|h-full\\\\|grid-flow\\\\|function DraggablePanel\\\\|className={\\\\`col-span\" src/trading/components/FabTerminal.tsx)",
+      "Read(//Users/administrator/Documents/Projects/**)",
+      "Bash(rm -f Tradenet.zip)",
+      "Bash(zip -r -q Tradenet.zip Tradenet -x Tradenet/node_modules/* -x Tradenet/dist/* -x Tradenet/.agents/* -x Tradenet/.git/* -x */.DS_Store -x Tradenet/.DS_Store)",
+      "Bash(unzip -l Tradenet.zip)"
+    ]
+  }
+}

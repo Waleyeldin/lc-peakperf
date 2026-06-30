@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+/* ── FAB eAccess Redesign — design tokens (dark mode) ──────────────────────
+   Pulled from the Figma file GG5cD0XHqNcV1xeuYaYCQ4, frame 1674-25339.
+   The Figma design uses the "Graphik" type family; Inter is the closest
+   freely-available substitute and is mapped onto the same weights. */
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Surfaces */
+  --color-page: #111315; /* app background        */
+  --color-surface: #1a1c1e; /* card background     */
+  --color-surface-2: #232527; /* raised / hover      */
+  --color-border-dark: #2a2c2e;
+
+  /* Brand / actions */
+  --color-action: #0062ff;
+  --color-action-hover: #003da6;
+  --color-fab-blue: #0a1f8f;
+
+  /* Status */
+  --color-positive: #24a148;
+  --color-warning: #ffaa00;
+  --color-negative: #c1080b;
+
+  /* Content */
+  --color-content: #ffffff;
+  --color-content-muted: #979797;
+  --color-content-subtle: #6b6f76;
+
+  /* Trading dashboard — softened bid/offer + market movement */
+  --color-bid: #2fd07a; /* bid / buy text     */
+  --color-bid-surface: rgba(36, 161, 72, 0.12);
+  --color-offer: #ff6b72; /* offer / sell text */
+  --color-offer-surface: rgba(193, 8, 11, 0.12);
+  --color-up: #2fd07a;
+  --color-down: #ff6b72;
+  --color-flat: #8a8f98;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-content);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Subtle entrance animation for dashboard/terminal panels ──────────── */
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Staggered reveal: apply `.grid-anim` to a grid; its direct children fade up
+   in sequence. Caps the stagger so large grids still finish quickly. */
+.grid-anim > * {
+  animation: panelIn 0.4s ease-out both;
+}
+.grid-anim > *:nth-child(1) { animation-delay: 0.02s; }
+.grid-anim > *:nth-child(2) { animation-delay: 0.06s; }
+.grid-anim > *:nth-child(3) { animation-delay: 0.1s; }
+.grid-anim > *:nth-child(4) { animation-delay: 0.14s; }
+.grid-anim > *:nth-child(5) { animation-delay: 0.18s; }
+.grid-anim > *:nth-child(6) { animation-delay: 0.22s; }
+.grid-anim > *:nth-child(7) { animation-delay: 0.26s; }
+.grid-anim > *:nth-child(8) { animation-delay: 0.3s; }
+.grid-anim > *:nth-child(n + 9) { animation-delay: 0.34s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-anim > * { animation: none; }
+}
+
+/* ── Live-tick flash for updating prices (trading terminals) ──────────── */
+@keyframes tickUp {
+  0% { background-color: rgba(47, 208, 122, 0.32); }
+  100% { background-color: transparent; }
+}
+@keyframes tickDown {
+  0% { background-color: rgba(255, 107, 114, 0.32); }
+  100% { background-color: transparent; }
+}
+.tick-up { animation: tickUp 0.65s ease-out; border-radius: 4px; }
+.tick-down { animation: tickDown 0.65s ease-out; border-radius: 4px; }

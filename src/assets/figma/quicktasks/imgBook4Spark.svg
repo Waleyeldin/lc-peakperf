@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 28.8571 30.3" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path id="book_4_spark" d="M18.626 19.5573C15.8277 22.4955 14.4286 26.0764 14.4286 30.3C14.4286 26.0764 13.0294 22.4955 10.2312 19.5573C7.4329 16.6191 4.02251 15.15 0 15.15C4.02251 15.15 7.4329 13.6809 10.2312 10.7427C13.0294 7.80455 14.4286 4.22364 14.4286 0C14.4286 4.22364 15.8277 7.80455 18.626 10.7427C21.4242 13.6809 24.8346 15.15 28.8571 15.15C24.8346 15.15 21.4242 16.6191 18.626 19.5573Z" fill="url(#paint0_linear_0_13)"/>
+<defs>
+<linearGradient id="paint0_linear_0_13" x1="14.4286" y1="0" x2="14.4286" y2="30.3" gradientUnits="userSpaceOnUse">
+<stop stop-color="#0007DB"/>
+<stop offset="1" stop-color="#01008A"/>
+</linearGradient>
+</defs>
+</svg>
