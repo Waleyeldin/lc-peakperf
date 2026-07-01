@@ -12,6 +12,9 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-center",
+    "updater:default",
+    "process:default",
+    "dialog:default",
     {
       "identifier": "http:default",
       "allow": [

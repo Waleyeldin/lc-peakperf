@@ -96,3 +96,102 @@ body {
 }
 .tick-up { animation: tickUp 0.65s ease-out; border-radius: 4px; }
 .tick-down { animation: tickDown 0.65s ease-out; border-radius: 4px; }
+
+/* ── Workspace board (react-grid-layout) — clean, hover-revealed resize ── */
+/* Handles stay invisible until you hover the card, then fade in softly. The
+   hit zones are wide (easy to grab) but the visible marks are slim and tasteful,
+   and light up in the app accent when you hover the edge/corner itself. */
+.react-grid-item > .react-resizable-handle {
+  z-index: 30;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.react-grid-item:hover > .react-resizable-handle,
+.react-grid-item.resizing > .react-resizable-handle {
+  opacity: 1;
+}
+/* Bottom edge — wide grab zone, slim centered bar. */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s {
+  left: 0;
+  width: 100%;
+  height: 14px;
+  bottom: 0;
+  margin: 0;
+  cursor: ns-resize;
+  transform: none;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 34px;
+  height: 4px;
+  margin-left: -17px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.12s ease, width 0.12s ease;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s:hover::after {
+  background: #0062ff;
+  width: 56px;
+}
+/* Right edge — wide grab zone, slim centered bar. */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e {
+  top: 0;
+  height: 100%;
+  width: 14px;
+  right: 0;
+  margin: 0;
+  cursor: ew-resize;
+  transform: none;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 4px;
+  height: 34px;
+  margin-top: -17px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.12s ease, height 0.12s ease;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e:hover::after {
+  background: #0062ff;
+  height: 56px;
+}
+/* Bottom-right corner — a neat little diagonal grip. */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se {
+  width: 18px;
+  height: 18px;
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se::after {
+  width: 8px;
+  height: 8px;
+  right: 4px;
+  bottom: 4px;
+  border-right: 2px solid rgba(255, 255, 255, 0.5);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+  border-bottom-right-radius: 3px;
+  transition: border-color 0.12s ease;
+}
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se:hover::after {
+  border-color: #0062ff;
+}
+/* Drop-target placeholder in the app accent. */
+.react-grid-item.react-grid-placeholder {
+  background: #0062ff !important;
+  opacity: 0.18 !important;
+  border-radius: 12px;
+}
+/* Drop-target placeholder in the app's accent colour, not the default red. */
+.react-grid-item.react-grid-placeholder {
+  background: #0062ff !important;
+  opacity: 0.22 !important;
+  border-radius: 12px;
+}

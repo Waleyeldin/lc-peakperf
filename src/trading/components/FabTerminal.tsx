@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, PointerEvent, ReactNode } from 'react'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { sendToBoard } from '../popout'
+import { usePrices, useLiveSymbols } from '../simData'
 import { Panel, Button, Badge, SegmentedTabs } from './ui'
 import BuySellDrawer from './BuySellDrawer'
 import {
@@ -141,13 +142,15 @@ function bySymbol(short: string): Symbol | undefined {
 
 // ── Indices panel ──────────────────────────────────────────────────────────
 function IndicesPanel({ tick }: { tick: number }) {
+  const price = usePrices()
   return (
     <Panel title="Indices" bodyClassName="overflow-y-auto" noPadding>
       <ul className="divide-y divide-border-dark">
         {MARKET_INDICES.map((ix) => {
-          // Live value oscillates around the base; chg% recomputed vs prevClose
-          // so the ▲/▼ glyph, colour and number all stay in sync.
-          const liveVal = live(ix.indexCurrent, tick, seedOf(ix.shortName))
+          // Base off the real (DFM index) / simulated (ADX etc.) value, then a
+          // tiny oscillation; chg% recomputed vs prevClose so ▲/▼ stay in sync.
+          const base = price(ix.shortName)?.last ?? ix.indexCurrent
+          const liveVal = live(base, tick, seedOf(ix.shortName))
           const liveChgPct = ((liveVal - ix.prevClose) / ix.prevClose) * 100
           const dir: 'up' | 'down' | 'flat' = liveChgPct > 0.0005 ? 'up' : liveChgPct < -0.0005 ? 'down' : 'flat'
           const tone = dir === 'down' ? 'text-down' : dir === 'up' ? 'text-up' : 'text-flat'
@@ -300,9 +303,11 @@ function HeroPanel({ sym, onTrade, tick }: { sym: Symbol; onTrade: (symbol: Symb
   const [mode, setMode] = useState<ChartMode>('Candles')
   const candles = useMemo(() => getCandles(sym.symbolShortName).slice(-45), [sym.symbolShortName])
 
-  // Live last price oscillates around the base; change/changePct/badge all
-  // recompute from it so ▲/▼, colour and the pct chip move together.
-  const liveLast = live(sym.lastPrice, tick, seedOf(sym.symbolShortName), 0.0022)
+  // Base off the real live (DFM) / simulated (ADX) price where available, then
+  // add a tiny oscillation so ▲/▼, colour and the pct chip move together.
+  const price = usePrices()
+  const base = price(sym.symbolShortName)?.last ?? sym.lastPrice
+  const liveLast = live(base, tick, seedOf(sym.symbolShortName), 0.0022)
   const liveChange = liveLast - sym.prevClose
   const liveChangePct = sym.prevClose ? (liveChange / sym.prevClose) * 100 : 0
   const tone = liveChange > 0 ? 'text-up' : liveChange < 0 ? 'text-down' : 'text-flat'
@@ -564,7 +569,7 @@ function SectorPanel() {
 
 // ── Movers ─────────────────────────────────────────────────────────────────
 function MoversPanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
-  const active = FULL_MARKET.filter((s) => s.lastPrice > 0)
+  const active = useLiveSymbols(FULL_MARKET).filter((s) => s.lastPrice > 0)
   const gainers = [...active].sort((a, b) => b.changePct - a.changePct).slice(0, 6)
   const losers = [...active].sort((a, b) => a.changePct - b.changePct).slice(0, 6)
   const maxG = Math.max(...gainers.map((s) => s.changePct), 0.1)
@@ -610,6 +615,7 @@ function MoversPanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onT
 
 // ── Most Active ──────────────────────────────────────────────────────────
 function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
+  const price = usePrices()
   return (
     <Panel title="Most Active" bodyClassName="overflow-y-auto" noPadding>
       <table className="w-full text-[12px]">
@@ -625,7 +631,10 @@ function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void;
         </thead>
         <tbody className="divide-y divide-border-dark">
           {TOP_SYMBOLS.map((s) => {
-            const tone = s.changePct > 0 ? 'text-up' : s.changePct < 0 ? 'text-down' : 'text-flat'
+            const q = price(s.symbolShortName)
+            const last = q?.last ?? s.lastPrice
+            const pct = q?.changePct ?? s.changePct
+            const tone = pct > 0 ? 'text-up' : pct < 0 ? 'text-down' : 'text-flat'
             const full = bySymbol(s.symbolShortName)
             return (
               <tr
@@ -644,8 +653,8 @@ function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void;
                   )}
                 </td>
                 <td className="px-2 py-1.5 text-center"><span className="inline-flex justify-center"><RowSparkline short={s.symbolShortName} /></span></td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-content">{fmtPrice(s.lastPrice)}</td>
-                <td className={`px-2 py-1.5 text-right tabular-nums ${tone}`}>{fmtPct(s.changePct)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-content">{fmtPrice(last)}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${tone}`}>{fmtPct(pct)}</td>
                 <td className="px-4 py-1.5 text-right tabular-nums text-content-muted">{fmtInt(s.volume)}</td>
               </tr>
             )
@@ -711,10 +720,11 @@ function TimeSalesPanel({ short }: { short: string }) {
 
 // ── Watchlist (from the MSN dashboard) ───────────────────────────────────────
 function WatchlistPanel({ selected, onSelect, onTrade }: { selected: Symbol; onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
+  const rows = useLiveSymbols(WATCHLIST)
   return (
     <Panel title="Watchlist" bodyClassName="overflow-y-auto" noPadding>
       <ul className="divide-y divide-border-dark">
-        {WATCHLIST.map((s) => {
+        {rows.map((s) => {
           const tone = s.changePct > 0 ? 'text-up' : s.changePct < 0 ? 'text-down' : 'text-flat'
           const active = s.symbolShortName === selected.symbolShortName
           return (
@@ -1070,8 +1080,8 @@ function DraggablePanel({
       <div className="pointer-events-none absolute right-1.5 top-1.5 z-30 flex items-center gap-0.5 rounded-md border border-border-dark bg-surface/95 px-0.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
         <button
           type="button"
-          aria-label="Pop panel out into its own window"
-          title="Pop out into a window (drag to another monitor)"
+          aria-label="Send panel to the Workspace board"
+          title="Send to the Workspace board (drag/arrange on another monitor)"
           onClick={() => onTearOut?.(id)}
           className="flex h-5 w-5 items-center justify-center rounded text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
         >
@@ -1138,7 +1148,7 @@ const HOTKEYS: { key: string; label: string; hint: string; action: HotkeyAction 
   { key: 'F2', label: 'Buy', hint: 'Open a buy ticket for the selected symbol', action: { kind: 'buy' } },
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket for the selected symbol', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
-  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Trade Flow (switches to Detailed)', action: { kind: 'broker' } },
+  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Flow as its own window', action: { kind: 'broker' } },
   { key: 'F6', label: 'Movers', hint: 'Jump to the Top Movers panel', action: { kind: 'panel', panel: 'movers' } },
   { key: 'F7', label: 'Order Book', hint: 'Jump to the Order Book panel', action: { kind: 'panel', panel: 'orderbook' } },
   { key: 'F8', label: 'News', hint: 'Jump to the News panel', action: { kind: 'panel', panel: 'news' } },
@@ -1206,21 +1216,19 @@ function HotkeyHelp({ open, onClose, onTrigger }: { open: boolean; onClose: () =
   )
 }
 
-// ── Pop-out (tear-off) windows ───────────────────────────────────────────────
-const PANEL_TITLES: Record<PanelId, string> = {
+// ── Pop-out (tear-off) panels ────────────────────────────────────────────────
+export const PANEL_TITLES: Record<PanelId, string> = {
   indices: 'Indices', hero: 'Quote', orderbook: 'Order Book', breadth: 'Breadth',
   sector: 'Sectors', movers: 'Top Movers', watchlist: 'Watchlist',
   mostactive: 'Most Active', news: 'News', timesales: 'Time & Sales',
 }
 
-const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
 /**
- * Renders ONE panel filling its own window — used by the detached pop-out
- * windows (loaded at `/?detach=<id>`). It carries its own live tick and a
- * local selected symbol so it runs fully standalone on a second monitor.
+ * Renders ONE Graph panel with its own live tick, local selected symbol and
+ * order ticket, filling its parent container. Shared by the full-window
+ * `DetachedPanel` and by the Workspace board (a card in the grid).
  */
-export function DetachedPanel({ id }: { id: string }) {
+export function GraphPanelBody({ id }: { id: string }) {
   const tick = useLiveTick()
   const [selected, setSelected] = useState<Symbol>(() => FULL_MARKET.find((s) => s.symbolShortName === 'EMAAR')!)
   // The detached window has no parent terminal to host the order ticket, so it
@@ -1245,7 +1253,7 @@ export function DetachedPanel({ id }: { id: string }) {
   }
 
   return (
-    <div className="h-screen w-screen overflow-auto bg-page p-3 [&>section]:h-full">
+    <div className="h-full w-full overflow-auto bg-page p-3 [&>section]:h-full">
       {body()}
       <BuySellDrawer
         open={trade.open}
@@ -1254,6 +1262,18 @@ export function DetachedPanel({ id }: { id: string }) {
         onSideChange={(side) => setTrade((t) => ({ ...t, side }))}
         onClose={() => setTrade((t) => ({ ...t, open: false }))}
       />
+    </div>
+  )
+}
+
+/**
+ * Renders ONE Graph panel filling its own window (the target of `/?detach=<id>`).
+ * Thin wrapper around {@link GraphPanelBody}.
+ */
+export function DetachedPanel({ id }: { id: string }) {
+  return (
+    <div className="h-screen w-screen bg-page">
+      <GraphPanelBody id={id} />
     </div>
   )
 }
@@ -1276,58 +1296,11 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
   const [flashId, setFlashId] = useState<PanelId | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // ── Pop-out windows ───────────────────────────────────────────────────────
-  // A detached panel is hidden from the grid and shown in its own window
-  // (native window in the Tauri app, browser popup on the web). Closing that
-  // window re-docks the panel into its original slot.
-  const [detached, setDetached] = useState<Set<PanelId>>(() => new Set())
-  const popupRefs = useRef<Partial<Record<PanelId, Window>>>({})
-
-  const popOut = (id: PanelId, screenX?: number, screenY?: number) => {
-    if (detached.has(id)) return
-    const label = `panel-${id}`
-    const title = `${PANEL_TITLES[id]} — LC PeakPerf`
-    const restore = () => setDetached((prev) => { const n = new Set(prev); n.delete(id); return n })
-    setDetached((prev) => new Set(prev).add(id))
-
-    if (inTauri) {
-      const w = new WebviewWindow(label, {
-        url: `/?detach=${id}`,
-        title,
-        width: 560,
-        height: 640,
-        x: screenX,
-        y: screenY,
-        resizable: true,
-      })
-      w.once('tauri://error', (err) => { console.error('pop-out failed', err); restore() })
-      // Poll until the window is gone (only after we've confirmed it opened),
-      // then re-dock. Avoids fragile cross-window lifecycle events.
-      let seen = false
-      const poll = setInterval(async () => {
-        const exists = !!(await WebviewWindow.getByLabel(label))
-        if (exists) seen = true
-        else if (seen) { clearInterval(poll); restore() }
-      }, 800)
-    } else {
-      const feat = `popup,width=560,height=640${screenX != null ? `,left=${Math.round(screenX)}` : ''}${screenY != null ? `,top=${Math.round(screenY)}` : ''}`
-      const popup = window.open(`/?detach=${id}`, label, feat)
-      if (!popup) { restore(); return }
-      popupRefs.current[id] = popup
-      const poll = setInterval(() => { if (popup.closed) { clearInterval(poll); delete popupRefs.current[id]; restore() } }, 800)
-    }
-  }
-
-  const dock = async (id: PanelId) => {
-    if (inTauri) {
-      const w = await WebviewWindow.getByLabel(`panel-${id}`)
-      await w?.close()
-    } else {
-      popupRefs.current[id]?.close()
-      delete popupRefs.current[id]
-      setDetached((prev) => { const n = new Set(prev); n.delete(id); return n })
-    }
-  }
+  // ── Pop-out to the shared Workspace board ──────────────────────────────────
+  // Popping a Graph panel out sends it to the same draggable board the Detailed
+  // look uses (grid arrangement, resize, dock-to-main, always-on-top), so both
+  // looks share one workspace board. The panel also stays in the graph.
+  const popOut = (id: PanelId) => { void sendToBoard(id) }
 
   // Persist order AND spans together (v2 layout).
   useEffect(() => {
@@ -1439,7 +1412,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} />
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid auto-rows-auto grid-flow-dense grid-cols-12 gap-3">
-          {order.filter((id) => !detached.has(id)).map((id) => {
+          {order.map((id) => {
             const def = panels[id]
             return (
               <DraggablePanel
@@ -1466,23 +1439,6 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
           })}
         </div>
       </div>
-      {detached.size > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border-dark bg-[#15171a] px-3 py-1.5">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Popped out</span>
-          {[...detached].map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => dock(id)}
-              title="Bring this panel back into the grid"
-              className="flex items-center gap-1.5 rounded border border-action/40 bg-[rgba(0,98,255,0.1)] px-2 py-0.5 text-[11px] text-content transition-colors hover:bg-[rgba(0,98,255,0.18)]"
-            >
-              {PANEL_TITLES[id]}
-              <span className="text-content-muted">⤓ re-dock</span>
-            </button>
-          ))}
-        </div>
-      )}
       <HotkeyBar onTrigger={runHotkey} />
       <TickerTape tick={tick} />
       <HotkeyHelp open={helpOpen} onClose={() => setHelpOpen(false)} onTrigger={runHotkey} />

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -24,6 +24,10 @@ log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-http = "2"
+# Self-update: check GitHub Releases for a newer signed build and install it.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
 # Pin: time 0.3.52 changed Parsable::parse() to 2 args, which breaks the
 # transitive cookie 0.18.1 crate. Hold at the last compatible patch.
 time = "=0.3.51"

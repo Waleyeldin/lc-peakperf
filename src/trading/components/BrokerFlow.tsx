@@ -263,40 +263,6 @@ export default function BrokerFlow({ onPopOut }: { onPopOut?: () => void } = {})
 
   return (
     <div className="flex h-full min-h-0 bg-page">
-      {/* ── Step rail ─────────────────────────────────────────────── */}
-      <aside className="hidden w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border-dark bg-[#141619] p-3 md:flex">
-        <div className="mb-2 px-1">
-          <div className="text-[13px] font-semibold text-content">Place a trade for a client</div>
-          <div className="text-[11px] text-content-muted">Broker workflow</div>
-        </div>
-        {RAIL.map((r, i) => {
-          const done = i < cur
-          const active = i === cur && stage !== 'stopped'
-          const failed = i === cur && stage === 'stopped'
-          return (
-            <div key={r.key} className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 ${active ? 'bg-[rgba(0,98,255,0.12)]' : ''}`}>
-              <span
-                className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                  failed ? 'bg-offer-surface text-down'
-                  : done ? 'bg-bid-surface text-up'
-                  : active ? 'bg-action text-white'
-                  : 'bg-[#1f2226] text-content-subtle'
-                }`}
-              >
-                {done ? '✓' : failed ? '!' : r.n}
-              </span>
-              <span className={`text-[12.5px] ${active ? 'font-semibold text-content' : done ? 'text-content-muted' : 'text-content-subtle'}`}>{r.t}</span>
-            </div>
-          )
-        })}
-        {(stage === 'movefunds' || (stage === 'stopped' && stopReason.includes('funds'))) && (
-          <div className="ml-8 mt-0.5 flex items-center gap-2 rounded-md px-2 py-1.5">
-            <Badge tone="warn">A</Badge>
-            <span className="text-[12px] text-content-muted">Short on cash branch</span>
-          </div>
-        )}
-      </aside>
-
       {/* ── Step content ──────────────────────────────────────────── */}
       <div className="min-w-0 flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-[640px]">

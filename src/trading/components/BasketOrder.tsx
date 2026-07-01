@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Panel, Select, Button, Badge } from './ui'
 import { FULL_MARKET, CLIENT_OPTIONS, fmtMoney } from '../data'
 import type { Symbol } from '../data'
+import { usePrices } from '../simData'
 
 /**
  * Basket Order builder (FAB Securities) — modernised version of the legacy
@@ -22,9 +23,9 @@ interface BasketLine {
   price: number
 }
 
-/** Value of a single line: Market uses the live last price, Limit uses the set price. */
-function lineValue(line: BasketLine): number {
-  const px = line.type === 'Market' ? line.symbol.lastPrice : line.price
+/** Value of a single line: Market uses the current (live/sim) price, Limit uses the set price. */
+function lineValue(line: BasketLine, marketPx: number): number {
+  const px = line.type === 'Market' ? marketPx : line.price
   return line.qty * px
 }
 
@@ -49,6 +50,8 @@ export default function BasketOrder() {
   const [pick, setPick] = useState<string>(FULL_MARKET[0].symbolShortName)
   const [client, setClient] = useState<string>(CLIENT_OPTIONS[0])
   const nextId = useRef(SEED.length + 1)
+  const price = usePrices()
+  const mpx = (l: BasketLine) => price(l.symbol.symbolShortName)?.last ?? l.symbol.lastPrice
 
   function addLine() {
     const symbol = FULL_MARKET.find((s) => s.symbolShortName === pick)
@@ -68,8 +71,8 @@ export default function BasketOrder() {
     setLines([])
   }
 
-  const totalBuy = lines.filter((l) => l.side === 'buy').reduce((s, l) => s + lineValue(l), 0)
-  const totalSell = lines.filter((l) => l.side === 'sell').reduce((s, l) => s + lineValue(l), 0)
+  const totalBuy = lines.filter((l) => l.side === 'buy').reduce((s, l) => s + lineValue(l, mpx(l)), 0)
+  const totalSell = lines.filter((l) => l.side === 'sell').reduce((s, l) => s + lineValue(l, mpx(l)), 0)
   const net = totalBuy - totalSell
 
   return (
@@ -211,7 +214,7 @@ export default function BasketOrder() {
                     </td>
 
                     {/* Est. value */}
-                    <td className="text-right tabular-nums text-content">{fmtMoney(lineValue(line))}</td>
+                    <td className="text-right tabular-nums text-content">{fmtMoney(lineValue(line, mpx(line)))}</td>
 
                     {/* Remove */}
                     <td className="text-center">

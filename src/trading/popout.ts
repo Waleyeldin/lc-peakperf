@@ -19,7 +19,9 @@ export async function sendToBoard(id: string) {
       await emitTo(BOARD, 'board:add', id)
       await existing.setFocus()
     } else {
-      new WebviewWindow(BOARD, { url: `/?board=${encodeURIComponent(id)}`, title: 'Workspace board', width: 760, height: 920, resizable: true })
+      // alwaysOnTop keeps the board visible above the main program so it does
+      // not disappear behind it while the user works.
+      new WebviewWindow(BOARD, { url: `/?board=${encodeURIComponent(id)}`, title: 'Workspace board', width: 760, height: 920, resizable: true, alwaysOnTop: true })
     }
     return
   }
@@ -34,6 +36,35 @@ export async function sendToBoard(id: string) {
 export async function closeBoard() {
   if (inTauri) { const w = await WebviewWindow.getByLabel(BOARD); await w?.close() }
   else { browserBoard?.close(); browserBoard = null }
+}
+
+/** Open a single component in its OWN dedicated window (focus it if already
+ *  open). Used by the F5 Broker Flow shortcut. */
+export async function openDetachedPanel(id: string, title: string) {
+  const label = `panel-${id}`
+  if (inTauri) {
+    const existing = await WebviewWindow.getByLabel(label)
+    if (existing) { await existing.setFocus(); return }
+    new WebviewWindow(label, { url: `/?detach=${id}`, title, width: 780, height: 880, resizable: true })
+    return
+  }
+  window.open(`/?detach=${id}`, label, 'popup,width=780,height=880')
+}
+
+// ── Dock the board back into the main window ─────────────────────────────────
+// The board window hands its component list to the main window (which shows it
+// as an embedded grid) and then closes itself.
+export async function dockBoardToMain(ids: string[]) {
+  if (inTauri) {
+    await emitTo('main', 'board:dock', ids)
+    const w = await WebviewWindow.getByLabel(BOARD)
+    await w?.close()
+    return
+  }
+  const ch = new BroadcastChannel('board-dock')
+  ch.postMessage(ids)
+  ch.close()
+  window.close() // this code runs inside the board popup; close it
 }
 
 /**

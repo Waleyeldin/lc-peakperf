@@ -1,6 +1,7 @@
 import { DirArrow } from './ui'
 import { TICKERS, fmtPrice, fmtChange, fmtPct } from '../data'
 import { useLiveData } from '../liveData'
+import { useSimData } from '../simData'
 import type { Direction } from '../data'
 
 /**
@@ -8,20 +9,32 @@ import type { Direction } from '../data'
  * dark trading dashboard. Renders the index tickers in a dense, scrollable
  * row separated by thin vertical dividers, each colour-coded by direction.
  */
+// Ticker label → index shortName so we can overlay live/simulated data.
+const TICKER_SYMBOL: Record<string, string> = {
+  'DFM General Index': 'DFMGI',
+  'ADX General Index': 'ADI',
+  'Nasdaq Dubai': 'NDUAE20',
+  'FTSE ADX 15': 'FADX15',
+}
+
 export default function MarketStrip() {
   const { quotes } = useLiveData()
-  const dfmgi = quotes.get('DFMGI')
+  const sim = useSimData()
 
   return (
     <div className="flex h-12 w-full items-stretch overflow-x-auto border-b border-border-dark bg-[#141619]">
       {TICKERS.map((t) => {
-        // Overlay the DFM General Index with real Yahoo data when available.
-        const live = t.label === 'DFM General Index' && dfmgi ? dfmgi : null
-        const value = live ? live.last : t.value
-        const netChange = live ? live.change : t.netChange
-        const changePct = live ? live.changePct : t.changePct
-        const direction: Direction = live
-          ? live.change > 0 ? 'up' : live.change < 0 ? 'down' : 'flat'
+        // Live Yahoo where available (DFM index), simulated tick otherwise.
+        const sym = TICKER_SYMBOL[t.label]
+        const q = sym ? quotes.get(sym) : undefined
+        const sm = sym && !q ? sim.get(sym) : undefined
+        const src = q ?? sm ?? null
+        const live = !!q
+        const value = src ? src.last : t.value
+        const netChange = src ? src.change : t.netChange
+        const changePct = src ? src.changePct : t.changePct
+        const direction: Direction = src
+          ? src.change > 0 ? 'up' : src.change < 0 ? 'down' : 'flat'
           : t.direction
         const tone = direction === 'up' ? 'text-up' : direction === 'down' ? 'text-down' : 'text-flat'
 

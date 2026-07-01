@@ -17,9 +17,11 @@ import PortfolioScreen from './components/PortfolioScreen'
 import ChartsScreen from './components/ChartsScreen'
 import Placeholder from './components/Placeholder'
 import FabTerminal from './components/FabTerminal'
-import BrokerFlow from './components/BrokerFlow'
+import BrokerDesk from './components/BrokerDesk'
 import TabBar from './components/TabBar'
-import { sendToBoard, closeBoard } from './popout'
+import BoardGrid from './components/BoardGrid'
+import { listen } from '@tauri-apps/api/event'
+import { sendToBoard, closeBoard, openDetachedPanel } from './popout'
 import { useLiveData } from './liveData'
 import FloatingToolbar from './components/FloatingToolbar'
 
@@ -251,7 +253,7 @@ const DETAILED_HOTKEYS: { key: string; label: string; hint: string; action: Deta
   { key: 'F2', label: 'Buy', hint: 'Open a buy ticket', action: { kind: 'buy' } },
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
-  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Trade Flow (most used)', action: { kind: 'broker' } },
+  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Flow as its own window', action: { kind: 'broker' } },
   { key: 'F6', label: 'Market', hint: 'Send the market table to the board window', action: { kind: 'pop', panel: 'd-market', title: 'Market' } },
   { key: 'F7', label: 'Watchlist', hint: 'Send the watchlist to the board window', action: { kind: 'pop', panel: 'd-right', title: 'Watchlist' } },
   { key: 'F8', label: 'Indices', hint: 'Send the market indices to the board window', action: { kind: 'pop', panel: 'd-indices', title: 'Indices' } },
@@ -449,19 +451,37 @@ export default function TradingPlatform() {
   // Both designs live in one document; the backtick key (or the top-bar
   // toggle) flips between them. Initial look can be seeded via ?mode=.
   const [viewMode, setViewMode] = useState<ViewMode>(() => (searchParams.get('mode') === 'detailed' ? 'detailed' : 'graph'))
+
+  // ── Docked board ────────────────────────────────────────────────
+  // When the detached "Workspace board" hits "Dock to main", it sends its
+  // component list here and closes itself; we show it as an embedded grid.
+  const [dockedBoard, setDockedBoard] = useState<string[] | null>(null)
+  // Where the docked board sits inside the main window.
+  const [dockPos, setDockPos] = useState<'left' | 'right' | 'bottom' | 'full'>('right')
+  useEffect(() => {
+    const inTauri = '__TAURI_INTERNALS__' in window
+    if (inTauri) {
+      let un: (() => void) | undefined
+      void listen<string[]>('board:dock', (e) => setDockedBoard(e.payload)).then((f) => { un = f })
+      return () => un?.()
+    }
+    const ch = new BroadcastChannel('board-dock')
+    ch.onmessage = (e) => setDockedBoard(e.data as string[])
+    return () => ch.close()
+  }, [])
+  const removeDocked = (id: string) =>
+    setDockedBoard((prev) => {
+      const next = (prev ?? []).filter((x) => x !== id)
+      return next.length ? next : null
+    })
   // One fixed document name across both looks.
   const displayTabs = tabs.map((t) => (t.kind === 'workspace' ? { ...t, title: DOC_NAME } : t))
 
-  // Jump to the (most-used) Broker Trade Flow screen, switching to Detailed.
-  const openBrokerFlow = () => {
-    setViewMode('detailed')
-    setOpenSection('Trading')
-    setOpenGroups((g) => new Set(g).add('Trading/Process'))
-    setActive({ section: 'Trading', group: 'Process', label: 'Broker Trade Flow', screen: 'broker-flow' })
-  }
+  // Open the Broker Flow in its own dedicated window.
+  const openBrokerFlow = () => { void openDetachedPanel('broker-flow', 'Broker Flow') }
 
   // Global workspace shortcuts (both looks): F11 switches look, F5 opens the
-  // Broker Trade Flow. Handled here once so neither look double-fires.
+  // Broker Flow as its own window. Handled here once so neither look double-fires.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (current.kind !== 'workspace') return
@@ -565,7 +585,8 @@ export default function TradingPlatform() {
       case 'portfolio':
         return screenWrap(<PortfolioScreen />)
       case 'broker-flow':
-        return <div className="min-h-0 flex-1 overflow-hidden"><BrokerFlow onPopOut={() => void sendToBoard('broker-flow')} /></div>
+        // The Broker Flow is the split-screen customer desk (widgets, no steps).
+        return <div className="min-h-0 flex-1 overflow-hidden"><BrokerDesk /></div>
       case 'placeholder':
         return screenWrap(<Placeholder title={active.label} group={active.group} />)
       default:
@@ -573,7 +594,7 @@ export default function TradingPlatform() {
         return (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-              <MarketIndices onPopOut={() => void sendToBoard('d-indices')} />
+              <MarketIndices market={market} onPopOut={() => void sendToBoard('d-indices')} />
               <FullMarket visibleColumns={visibleColumns} onOpenColumns={() => setColumnsOpen(true)} onTrade={openTrade} onPopOut={() => void sendToBoard('d-market')} />
             </div>
             <RightPanel onTrade={openTrade} onPopOut={() => void sendToBoard('d-right')} />
@@ -583,7 +604,7 @@ export default function TradingPlatform() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-page text-content">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-page text-content">
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border-dark bg-[#0b1b4d] px-4">
         <Link to="/" className="flex items-center gap-2 text-white" title="Back to FAB eAccess">
@@ -593,15 +614,20 @@ export default function TradingPlatform() {
         <span className="text-[13px] font-medium text-white/80">{current.kind === 'workspace' ? DOC_NAME : current.title}</span>
         {current.kind === 'workspace' && <ViewModeToggle mode={viewMode} onChange={setViewMode} />}
 
-        <GlobalSearch
-          onNavigate={(leaf) => {
-            setViewMode('detailed')
-            setOpenSection(leaf.section)
-            setOpenGroups((g) => new Set(g).add(`${leaf.section}/${leaf.group}`))
-            setActive(leaf)
-          }}
-          onPickSymbol={(symbol) => setTrade({ open: true, side: 'buy', symbol })}
-        />
+        {/* The Graph look (securities terminal) has its own symbol search, so
+            hide this top-bar search there to avoid two searches. Keep it in the
+            Detailed look, where it drives menu navigation. */}
+        {!(current.kind === 'workspace' && viewMode === 'graph') && (
+          <GlobalSearch
+            onNavigate={(leaf) => {
+              setViewMode('detailed')
+              setOpenSection(leaf.section)
+              setOpenGroups((g) => new Set(g).add(`${leaf.section}/${leaf.group}`))
+              setActive(leaf)
+            }}
+            onPickSymbol={(symbol) => setTrade({ open: true, side: 'buy', symbol })}
+          />
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           <div className="relative">
@@ -645,7 +671,13 @@ export default function TradingPlatform() {
         onNew={newTab}
       />
 
-      {/* ── Body ────────────────────────────────────────────────── */}
+      {/* ── Body + docked board share the space as a real split ──── */}
+      <div
+        className={`flex min-h-0 flex-1 ${
+          dockedBoard ? (dockPos === 'bottom' ? 'flex-col' : dockPos === 'left' ? 'flex-row-reverse' : 'flex-row') : ''
+        }`}
+      >
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${dockedBoard && dockPos === 'full' ? 'hidden' : ''}`}>
       {detailedActive ? (
       <>
       <div className="flex min-h-0 flex-1">
@@ -743,6 +775,72 @@ export default function TradingPlatform() {
           <Placeholder title={current.title} group="Open document" />
         </div>
       )}
+
+      </div>{/* end main content column */}
+
+      {/* Docked board occupies a real section of the screen, not an overlay. */}
+      {dockedBoard && (
+        <aside
+          className={`flex min-h-0 flex-col border-border-dark bg-page ${
+            dockPos === 'full'
+              ? 'flex-1'
+              : dockPos === 'bottom'
+                ? 'h-[48%] min-h-[240px] border-t'
+                : dockPos === 'left'
+                  ? 'w-[46%] min-w-[360px] max-w-[820px] border-r'
+                  : 'w-[46%] min-w-[360px] max-w-[820px] border-l'
+          }`}
+        >
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-border-dark bg-[#141619] px-3">
+            <span className="flex items-center gap-2 text-[13px] font-semibold text-content">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Docked board
+              <span className="text-[11px] font-normal text-content-muted">{dockedBoard.length} component{dockedBoard.length === 1 ? '' : 's'}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              {/* Position switcher — snap the board to a side, the bottom, or full. */}
+              <div className="flex items-center gap-0.5 rounded-md border border-border-dark bg-surface p-0.5">
+                {([
+                  { pos: 'left', title: 'Dock left', d: <><rect x="3" y="3" width="7" height="18" rx="1" fill="currentColor"/><rect x="12" y="3" width="9" height="18" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/></> },
+                  { pos: 'right', title: 'Dock right', d: <><rect x="3" y="3" width="9" height="18" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="14" y="3" width="7" height="18" rx="1" fill="currentColor"/></> },
+                  { pos: 'bottom', title: 'Dock bottom', d: <><rect x="3" y="3" width="18" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="2"/><rect x="3" y="14" width="18" height="7" rx="1" fill="currentColor"/></> },
+                  { pos: 'full', title: 'Full screen', d: <rect x="3" y="3" width="18" height="18" rx="1" fill="currentColor"/> },
+                ] as const).map((b) => (
+                  <button
+                    key={b.pos}
+                    onClick={() => setDockPos(b.pos)}
+                    title={b.title}
+                    aria-label={b.title}
+                    className={`flex h-6 w-6 items-center justify-center rounded ${dockPos === b.pos ? 'bg-[rgba(0,98,255,0.22)] text-content' : 'text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content'}`}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24">{b.d}</svg>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { const ids = dockedBoard; setDockedBoard(null); ids?.forEach((id) => void sendToBoard(id)) }}
+                title="Pop the board back out into its own window"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                Pop out
+              </button>
+              <button
+                onClick={() => setDockedBoard(null)}
+                title="Close the docked board"
+                aria-label="Close the docked board"
+                className="rounded p-1 text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <BoardGrid ids={dockedBoard} onRemove={removeDocked} />
+          </div>
+        </aside>
+      )}
+      </div>{/* end body / docked-board split */}
 
       {/* ── Overlays ────────────────────────────────────────────── */}
       <DetailedHelp open={detailedActive && dHelpOpen} onClose={() => setDHelpOpen(false)} onTrigger={runDetailed} />

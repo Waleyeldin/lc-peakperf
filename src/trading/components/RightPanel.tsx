@@ -15,6 +15,7 @@ import {
   directionColor,
 } from '../data'
 import DataTable, { type Column } from './DataTable'
+import { useLiveSymbols } from '../simData'
 import { Select, Button, PopOutButton } from './ui'
 
 /**
@@ -135,9 +136,10 @@ function WatchlistTab({
 }: {
   onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void
 }) {
+  const rows = useLiveSymbols(WATCHLIST)
   return (
     <div className="flex flex-col gap-1 pt-1">
-      {WATCHLIST.map((row) => (
+      {rows.map((row) => (
         <div
           key={row.symbolShortName}
           className="group flex items-center gap-2 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-border-dark hover:bg-[rgba(255,255,255,0.03)]"

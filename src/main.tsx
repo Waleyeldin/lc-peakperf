@@ -6,6 +6,7 @@ import App from './App.tsx'
 import TradingPlatform from './trading/TradingPlatform.tsx'
 import DetachedView from './trading/DetachedView.tsx'
 import BoardWindow from './trading/BoardWindow.tsx'
+import { checkForUpdates } from './updater.ts'
 
 // When packaged as the Tauri desktop program, boot straight into the
 // LC…PeakPerf terminal instead of the eAccess homepage. We load the root
@@ -22,6 +23,12 @@ function Home() {
   const detach = params.get('detach')
   if (detach) return <DetachedView id={detach} />
   return isTauri ? <Navigate to="/trading?tab=lc" replace /> : <App />
+}
+
+// Quietly check GitHub for a newer signed build once the app has booted.
+// Only the main window checks — torn-off panel windows skip it.
+if (!window.location.search.includes('detach') && !window.location.search.includes('board')) {
+  checkForUpdates({ silent: true })
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -4,7 +4,7 @@ import { DetachedPanel } from './components/FabTerminal'
 import MarketIndices from './components/MarketIndices'
 import FullMarket from './components/FullMarket'
 import RightPanel from './components/RightPanel'
-import BrokerFlow from './components/BrokerFlow'
+import BrokerDesk from './components/BrokerDesk'
 import BuySellDrawer from './components/BuySellDrawer'
 import { FULL_MARKET_COLUMNS } from './data'
 import type { Symbol } from './data'
@@ -47,7 +47,7 @@ export default function DetachedView({ id }: { id: string }) {
     case 'd-right':
       return <TradeHost render={(onTrade) => <RightPanel onTrade={onTrade} />} />
     case 'broker-flow':
-      return <div className="h-screen w-screen bg-page"><BrokerFlow /></div>
+      return <div className="h-screen w-screen bg-page"><BrokerDesk /></div>
     default:
       return <DetachedPanel id={id} />
   }

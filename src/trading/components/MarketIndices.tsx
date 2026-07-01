@@ -1,6 +1,7 @@
 import DataTable, { type Column } from './DataTable'
 import { Panel, Badge, DirArrow, PopOutButton } from './ui'
 import { useLiveData } from '../liveData'
+import { useSimData } from '../simData'
 import {
   MARKET_INDICES,
   fmtPrice,
@@ -15,22 +16,21 @@ import type { MarketIndex } from '../data'
  * Market Indices overview — a dense, sticky-header table of the exchange
  * indices with current value, net change, %, OHLC, volume and value.
  */
-export default function MarketIndices({ onPopOut }: { onPopOut?: () => void } = {}) {
+export default function MarketIndices({ onPopOut, market }: { onPopOut?: () => void; market?: string } = {}) {
   const { quotes } = useLiveData()
-  // Overlay the DFM General Index (shortName DFMGI) with live Yahoo data.
-  const rows: MarketIndex[] = MARKET_INDICES.map((row) => {
-    const q = row.shortName === 'DFMGI' ? quotes.get('DFMGI') : undefined
-    if (!q) return row
-    return {
-      ...row,
-      indexCurrent: q.last,
-      netChange: q.change,
-      changePct: q.changePct,
-      prevClose: q.prevClose,
-      direction: q.change > 0 ? 'up' : q.change < 0 ? 'down' : 'flat',
-    }
-  })
-  const liveSet = new Set(rows.filter((r) => quotes.has(r.shortName)).map((r) => r.shortName))
+  const sim = useSimData()
+  // Live Yahoo data on the DFM General Index; simulated ticks on every other
+  // index (ADX, Nasdaq, DFM sub-indices) so they move too.
+  const rows: MarketIndex[] = MARKET_INDICES
+    .filter((row) => !market || market === 'All Markets' || row.marketName === market)
+    .map((row) => {
+      const q = quotes.get(row.shortName)
+      if (q) return { ...row, indexCurrent: q.last, netChange: q.change, changePct: q.changePct, prevClose: q.prevClose, direction: q.change > 0 ? 'up' : q.change < 0 ? 'down' : 'flat' }
+      const sm = sim.get(row.shortName)
+      if (sm) return { ...row, indexCurrent: sm.last, netChange: sm.change, changePct: sm.changePct, direction: sm.direction }
+      return row
+    })
+  const liveSet = new Set(MARKET_INDICES.filter((r) => quotes.has(r.shortName)).map((r) => r.shortName))
 
   const columns: Column<MarketIndex>[] = [
     {

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import DataTable, { type Column } from './DataTable'
 import { Panel, Select, Button, Badge, PopOutButton } from './ui'
 import { useLiveData } from '../liveData'
+import { useSimData } from '../simData'
 import type { Symbol } from '../data'
 import {
   FULL_MARKET,
@@ -64,25 +65,29 @@ export default function FullMarket({ visibleColumns, onOpenColumns, onTrade, onP
     })
   }, [search, sector, market])
 
-  // Overlay live Yahoo prices onto covered DFM symbols.
+  // Overlay real live Yahoo prices onto covered DFM symbols; simulated ticks
+  // onto everything else (ADX, Nasdaq, unmapped DFM names) so they move too.
   const { quotes } = useLiveData()
+  const sim = useSimData()
   const displayRows = useMemo(
     () =>
       rows.map((s) => {
         const q = quotes.get(s.symbolShortName)
-        if (!q) return s
-        const spread = Math.max(0.005, +(q.last * 0.001).toFixed(3))
+        const sm = q ? null : sim.get(s.symbolShortName)
+        const last = q?.last ?? sm?.last
+        if (last == null) return s
+        const spread = Math.max(0.005, +(last * 0.001).toFixed(3))
         return {
           ...s,
-          lastPrice: q.last,
-          change: q.change,
-          changePct: q.changePct,
-          prevClose: q.prevClose,
-          bidPrice: +(q.last - spread).toFixed(3),
-          offerPrice: +(q.last + spread).toFixed(3),
+          lastPrice: last,
+          change: q?.change ?? sm?.change ?? s.change,
+          changePct: q?.changePct ?? sm?.changePct ?? s.changePct,
+          prevClose: q?.prevClose ?? s.prevClose,
+          bidPrice: +(last - spread).toFixed(3),
+          offerPrice: +(last + spread).toFixed(3),
         }
       }),
-    [rows, quotes],
+    [rows, quotes, sim],
   )
 
   // ─── Columns: registry order, filtered by visibleColumns, mapped by format ─

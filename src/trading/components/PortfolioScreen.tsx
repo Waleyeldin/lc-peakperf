@@ -3,7 +3,6 @@ import DataTable, { type Column } from './DataTable'
 import { Panel, Select, Button, Badge } from './ui'
 import {
   PORTFOLIO,
-  PORTFOLIO_TOTALS,
   PURCHASE_POWER,
   CASH_MOVEMENTS,
   CLIENT_OPTIONS,
@@ -13,6 +12,7 @@ import {
   fmtPct,
 } from '../data'
 import type { PortfolioPosition, CashMovement } from '../data'
+import { usePrices } from '../simData'
 
 /**
  * Portfolio Positioning screen for FAB Securities — a modern dark refresh of
@@ -25,8 +25,17 @@ export default function PortfolioScreen() {
   const [portfolio, setPortfolio] = useState('Main Portfolio')
   const [currency, setCurrency] = useState('AED')
 
-  const totalGain = PORTFOLIO_TOTALS.gainLoss
-  const totalGainPct = PORTFOLIO_TOTALS.cost ? (totalGain / PORTFOLIO_TOTALS.cost) * 100 : 0
+  // Re-value holdings from live/sim prices.
+  const price = usePrices()
+  const holdings = PORTFOLIO.map((p) => {
+    const last = price(p.symbol)?.last ?? p.evalPrice
+    const marketValue = Math.round(last * p.quantity)
+    return { ...p, evalPrice: last, marketValue, gainLoss: marketValue - p.cost }
+  })
+  const totalMarketValue = holdings.reduce((s, p) => s + p.marketValue, 0)
+  const totalCost = holdings.reduce((s, p) => s + p.cost, 0)
+  const totalGain = totalMarketValue - totalCost
+  const totalGainPct = totalCost ? (totalGain / totalCost) * 100 : 0
 
   // ─── Holdings columns ────────────────────────────────────────────────────
   const holdingsColumns: Column<PortfolioPosition>[] = [
@@ -147,13 +156,13 @@ export default function PortfolioScreen() {
         <div className="rounded-lg border border-border-dark bg-surface p-4">
           <div className="text-[11px] text-content-muted">Portfolio Market Value</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums">
-            {fmtMoney(PORTFOLIO_TOTALS.marketValue)}
+            {fmtMoney(totalMarketValue)}
           </div>
         </div>
         <div className="rounded-lg border border-border-dark bg-surface p-4">
           <div className="text-[11px] text-content-muted">Total Cost</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums">
-            {fmtMoney(PORTFOLIO_TOTALS.cost)}
+            {fmtMoney(totalCost)}
           </div>
         </div>
         <div className="rounded-lg border border-border-dark bg-surface p-4">
@@ -174,7 +183,7 @@ export default function PortfolioScreen() {
         <div className="max-h-[420px] overflow-auto">
           <DataTable
             columns={holdingsColumns}
-            rows={PORTFOLIO}
+            rows={holdings}
             rowKey={(r) => r.symbol}
             dense
             stickyHeader

@@ -166,7 +166,14 @@ export const FULL_MARKET_COLUMNS: ColumnDef[] = [
 
 const SECTORS = ['Banking', 'Real Estate', 'Financials', 'Energy', 'Telecom', 'Consumer', 'Industrial', 'Insurance', 'Materials']
 
-type SeedRow = [name: string, short: string, sector: string, last: number, chgPct: number, tone?: Direction, remarks?: Symbol['remarks']]
+type MarketCode = 'DFM' | 'ADX' | 'NASDAQ'
+const MARKET_NAMES: Record<MarketCode, string> = {
+  DFM: 'Dubai Financial Market',
+  ADX: 'Abu Dhabi Securities Exchange',
+  NASDAQ: 'Nasdaq Dubai',
+}
+
+type SeedRow = [name: string, short: string, sector: string, last: number, chgPct: number, tone?: Direction, remarks?: Symbol['remarks'], market?: MarketCode]
 
 const FULL_MARKET_SEED: SeedRow[] = [
   ['Aan Digital Services', 'AAN', 'Telecom', 0.336, 0.0, 'flat'],
@@ -213,16 +220,32 @@ const FULL_MARKET_SEED: SeedRow[] = [
   ['Spinneys Holding', 'SPINNEYS', 'Consumer', 1.5, 0.67, 'up'],
   ['Talabat Holding', 'TALABAT', 'Consumer', 1.62, -0.61, 'down'],
   ['Union Properties', 'UPP', 'Real Estate', 0.58, 3.57, 'up'],
+  // ── Abu Dhabi Securities Exchange (ADX) — simulated (no free live feed) ──
+  ['First Abu Dhabi Bank', 'FAB', 'Banking', 13.9, 0.8, 'up', undefined, 'ADX'],
+  ['International Holding Co', 'IHC', 'Financials', 400.0, 1.2, 'up', undefined, 'ADX'],
+  ['Aldar Properties', 'ALDAR', 'Real Estate', 8.2, 1.6, 'up', undefined, 'ADX'],
+  ['Abu Dhabi Commercial Bank', 'ADCB', 'Banking', 9.8, -0.4, 'down', undefined, 'ADX'],
+  ['Abu Dhabi Islamic Bank', 'ADIB', 'Banking', 12.6, 0.5, 'up', undefined, 'ADX'],
+  ['e& (Etisalat)', 'ETISALAT', 'Telecom', 17.5, 0.3, 'up', undefined, 'ADX'],
+  ['Abu Dhabi National Energy (TAQA)', 'TAQA', 'Energy', 2.9, -0.7, 'down', undefined, 'ADX'],
+  ['ADNOC Gas', 'ADNOCGAS', 'Energy', 3.4, 1.1, 'up', undefined, 'ADX'],
+  ['ADNOC Drilling', 'ADNOCDRILL', 'Energy', 5.6, 2.0, 'up', undefined, 'ADX'],
+  ['Borouge', 'BOROUGE', 'Materials', 2.5, -0.4, 'down', undefined, 'ADX'],
+  ['Multiply Group', 'MULTIPLY', 'Financials', 2.6, 0.8, 'up', undefined, 'ADX'],
+  ['Pure Health Holding', 'PUREHEALTH', 'Consumer', 4.7, 1.3, 'up', undefined, 'ADX'],
+  // ── Nasdaq Dubai — simulated ──
+  ['DP World', 'DPW', 'Industrial', 16.75, 0.6, 'up', undefined, 'NASDAQ'],
+  ['Emirates REIT', 'EREIT', 'Real Estate', 3.9, -0.5, 'down', undefined, 'NASDAQ'],
 ]
 
-function buildSymbol([name, short, sector, last, chgPct, tone, remarks]: SeedRow): Symbol {
+function buildSymbol([name, short, sector, last, chgPct, tone, remarks, market = 'DFM']: SeedRow): Symbol {
   const prevClose = +(last / (1 + chgPct / 100)).toFixed(3)
   const change = +(last - prevClose).toFixed(3)
   const spread = Math.max(0.005, +(last * 0.001).toFixed(3))
   const suspended = remarks === 'suspended'
   return {
-    marketName: 'Dubai Financial Market',
-    marketShortName: 'DFM',
+    marketName: MARKET_NAMES[market],
+    marketShortName: market,
     symbolName: name,
     symbolShortName: short,
     id: short,

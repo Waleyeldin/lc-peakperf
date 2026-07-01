@@ -13,6 +13,7 @@ import {
   fmtMoney,
 } from '../data'
 import type { Symbol, Order } from '../data'
+import { useLiveSymbols } from '../simData'
 
 /**
  * Detailed order-entry screen for the FAB Securities dashboard. A self-contained
@@ -55,9 +56,11 @@ export default function OrderEntry({ onTrade }: { onTrade: (symbol: Symbol, side
     setPrice(defaultPrice(selected, side))
   }, [selected, side, isMarket])
 
-  const effectivePrice = isMarket ? selected.lastPrice : price
+  // Live/sim overlay of the picked symbol for pricing + the quote display.
+  const liveSel = useLiveSymbols([selected])[0]
+  const effectivePrice = isMarket ? liveSel.lastPrice : price
   const orderValue = quantity * effectivePrice
-  const isUp = selected.changePct >= 0
+  const isUp = liveSel.changePct >= 0
 
   // ─── Right-hand panels ──────────────────────────────────────────────────
   const maxDepthSize = useMemo(
@@ -144,17 +147,17 @@ export default function OrderEntry({ onTrade }: { onTrade: (symbol: Symbol, side
           <div className="rounded-md border border-border-dark bg-[#15171a] p-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] tabular-nums">
               <span className="text-content-muted">
-                Last <span className="text-content">{fmtPrice(selected.lastPrice)}</span>
+                Last <span className="text-content">{fmtPrice(liveSel.lastPrice)}</span>
               </span>
               <span className="text-content-muted">
-                Bid <span className="text-up">{fmtPrice(selected.bidPrice)}</span>
+                Bid <span className="text-up">{fmtPrice(liveSel.bidPrice)}</span>
               </span>
               <span className="text-content-muted">
-                Offer <span className="text-down">{fmtPrice(selected.offerPrice)}</span>
+                Offer <span className="text-down">{fmtPrice(liveSel.offerPrice)}</span>
               </span>
               <Badge tone={isUp ? 'up' : 'down'} className="ml-auto">
                 {isUp ? '+' : ''}
-                {selected.changePct.toFixed(2)}%
+                {liveSel.changePct.toFixed(2)}%
               </Badge>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-[11px] tabular-nums">
