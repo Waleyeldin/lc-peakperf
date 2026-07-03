@@ -48,7 +48,9 @@ export async function openDetachedPanel(id: string, title: string, opts?: { widt
   if (inTauri) {
     const existing = await WebviewWindow.getByLabel(label)
     if (existing) { await existing.setFocus(); return }
-    new WebviewWindow(label, { url: `/?detach=${id}`, title, width, height, resizable: true })
+    // alwaysOnTop so the window stays above the main program (doesn't slip behind
+    // it when the user clicks back into the main window) — matters on macOS.
+    new WebviewWindow(label, { url: `/?detach=${id}`, title, width, height, resizable: true, alwaysOnTop: true })
     return
   }
   window.open(`/?detach=${id}`, label, `popup,width=${width},height=${height}`)
@@ -109,6 +111,7 @@ export function openPanelWindow(
       x: screenX,
       y: screenY,
       resizable: true,
+      alwaysOnTop: true, // stay above the main program (esp. macOS)
     })
     w.once('tauri://error', (err) => { console.error('pop-out failed', err); onClosed() })
     // Poll until the window is gone (only after confirming it opened).

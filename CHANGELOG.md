@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.1.1
+
+- **News "Related" now shows only the selected symbol.** Pick Emaar → Related shows Emaar stories only; **All** still shows every headline. (Previously Related also appended "More headlines".)
+- **macOS: reliable panel dragging.** The Graph terminal's drag-to-reorder is rewritten to use pointer events instead of HTML5 drag-and-drop, which is unreliable in macOS's WebView — so dragging panels (and dragging one off to the board) works on Mac.
+- **Pop-out windows stay on top.** The Workspace board and the Order Placement / Order Placement · AI / panel windows now float above the main window, so they no longer disappear behind it when you click back into the main program.
+
 ## v3.1.0
 
 - **"FAB Trade" everywhere** — the app is now named FAB Trade at the OS level too (window title, taskbar/dock, and installer), completing the rebrand. **This is the build to install** for demos.

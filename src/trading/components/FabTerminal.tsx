@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent, PointerEvent, ReactNode } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 import { sendToBoard } from '../popout'
 import { usePrices, useLiveSymbols } from '../simData'
 import { Panel, Button, Badge, SegmentedTabs, Drawer } from './ui'
@@ -963,7 +963,6 @@ function NewsPanel({ selected, onOpen }: { selected: Symbol; onOpen: (i: NewsIte
   // headline regardless of what's selected. Toggle in the panel header.
   const [filter, setFilter] = useState<NewsFilter>('Related')
   const related = NEWS.filter((n) => n.symbols.includes(selected.symbolShortName))
-  const rest = NEWS.filter((n) => !n.symbols.includes(selected.symbolShortName))
   return (
     <Panel
       title="News"
@@ -982,29 +981,22 @@ function NewsPanel({ selected, onOpen }: { selected: Symbol; onOpen: (i: NewsIte
             {NEWS.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
           </ul>
         </>
-      ) : (
+      ) : related.length > 0 ? (
         <>
-          {related.length > 0 ? (
-            <>
-              <NewsSectionLabel>
-                <span className="h-1.5 w-1.5 rounded-full bg-action" />
-                Related to {selected.symbolShortName}
-                <span className="ml-auto font-normal normal-case text-content-subtle">{related.length} stories</span>
-              </NewsSectionLabel>
-              <ul className="divide-y divide-border-dark">
-                {related.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
-              </ul>
-              <NewsSectionLabel>More headlines</NewsSectionLabel>
-            </>
-          ) : (
-            <NewsSectionLabel>
-              No stories for {selected.symbolShortName} — latest headlines
-            </NewsSectionLabel>
-          )}
+          <NewsSectionLabel>
+            <span className="h-1.5 w-1.5 rounded-full bg-action" />
+            Related to {selected.symbolShortName}
+            <span className="ml-auto font-normal normal-case text-content-subtle">{related.length} stories</span>
+          </NewsSectionLabel>
           <ul className="divide-y divide-border-dark">
-            {rest.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
+            {related.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
           </ul>
         </>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-1 px-6 py-10 text-center">
+          <div className="text-[12px] text-content-muted">No stories for {selected.symbolShortName} right now.</div>
+          <div className="text-[11px] text-content-subtle">Switch to <span className="font-medium text-content-muted">All</span> to see every headline.</div>
+        </div>
       )}
     </Panel>
   )
@@ -1438,6 +1430,8 @@ function DraggablePanel({
   // buttons inside the panel never start an accidental drag.
   const [resizing, setResizing] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
+  const downRef = useRef<{ x: number; y: number } | null>(null)
   // Captured at pointer-down so a continuous drag maps px → column delta
   // independently of intermediate re-renders.
   const resizeRef = useRef<{ startX: number; startSpan: number; unit: number } | null>(null)
@@ -1481,37 +1475,50 @@ function DraggablePanel({
       className={`group relative isolate h-full [&>section]:h-full transition-shadow ${isDragging ? 'opacity-50' : ''} ${
         isOver ? 'rounded-xl ring-2 ring-action/70' : ''
       } ${highlight ? 'rounded-xl ring-2 ring-action shadow-[0_0_0_4px_rgba(0,98,255,0.25)]' : ''}`}
-      onDragOver={(e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'move'
-        onDragOverPanel(id)
-      }}
-      onDrop={(e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        onDropPanel(id)
-      }}
     >
       {/* Drag the title bar to reorder (drag off the window to pop out). Sits
-          under the header actions (z-20) so those stay clickable. */}
+          under the header actions (z-20) so those stay clickable. Uses pointer
+          events (not HTML5 drag) so it works reliably in macOS WebView. */}
       <div
-        draggable
-        onDragStart={(e: DragEvent<HTMLDivElement>) => {
-          e.dataTransfer.setData('text/plain', id)
-          e.dataTransfer.effectAllowed = 'move'
-          if (wrapperRef.current) e.dataTransfer.setDragImage(wrapperRef.current, 24, 16)
-          onDragStartPanel(id)
+        onPointerDown={(e: PointerEvent<HTMLDivElement>) => {
+          if (e.button !== 0) return
+          downRef.current = { x: e.clientX, y: e.clientY }
+          e.currentTarget.setPointerCapture(e.pointerId)
         }}
-        onDragEnd={(e: DragEvent<HTMLDivElement>) => {
+        onPointerMove={(e: PointerEvent<HTMLDivElement>) => {
+          const d = downRef.current
+          if (!d) return
+          // Only begin the drag past a small threshold so a plain click doesn't flicker.
+          if (!draggingRef.current) {
+            if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 5) return
+            draggingRef.current = true
+            onDragStartPanel(id)
+          }
+          const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)
+            ?.closest('[data-panel-id]')?.getAttribute('data-panel-id') as PanelId | null
+          if (over) onDragOverPanel(over)
+        }}
+        onPointerUp={(e: PointerEvent<HTMLDivElement>) => {
+          const wasDragging = draggingRef.current
+          draggingRef.current = false
+          downRef.current = null
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+          if (!wasDragging) return // plain click, not a drag
+          // Released outside this window → tear the panel off to the board.
           const outside =
             e.screenX < window.screenX ||
             e.screenX > window.screenX + window.outerWidth ||
             e.screenY < window.screenY ||
             e.screenY > window.screenY + window.outerHeight
-          if (outside && e.screenX !== 0 && e.screenY !== 0) onTearOut?.(id, e.screenX, e.screenY)
-          onDragEndPanel()
+          if (outside && e.screenX !== 0 && e.screenY !== 0) { onTearOut?.(id, e.screenX, e.screenY); onDragEndPanel(); return }
+          const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)
+            ?.closest('[data-panel-id]')?.getAttribute('data-panel-id') as PanelId | null
+          if (over) onDropPanel(over)
+          else onDragEndPanel()
         }}
+        onPointerCancel={() => { draggingRef.current = false; downRef.current = null; onDragEndPanel() }}
         title="Drag the header to move · drag off the window to pop out"
-        className="absolute left-0 right-0 top-0 z-10 h-11 cursor-move"
+        className="absolute left-0 right-0 top-0 z-10 h-11 cursor-move touch-none"
       />
       {/* Hide + send-to-board as a bordered button group (detailed-view style). */}
       <div className="absolute right-1.5 top-0 z-30 flex h-11 items-center">
