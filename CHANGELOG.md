@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.1.2
+
+- **Opens full-screen on sign-in** — after you log in, the desk window maximises to fill the screen.
+- Detached market-tab windows now get the same permissions as the main window (live data + updates).
+
 ## v3.1.1
 
 - **News "Related" now shows only the selected symbol.** Pick Emaar → Related shows Emaar stories only; **All** still shows every headline. (Previously Related also appended "More headlines".)

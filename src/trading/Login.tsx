@@ -17,11 +17,18 @@ export default function Login() {
 
   const canSubmit = brokerId.trim() !== '' && password.trim() !== ''
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setTouched(true)
     if (!canSubmit) return
     sessionStorage.setItem('lc-auth', '1')
+    // Open the desk maximised (fills the screen) on sign-in.
+    if ('__TAURI_INTERNALS__' in window) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        await getCurrentWindow().maximize()
+      } catch { /* not fatal */ }
+    }
     navigate('/trading?tab=dfm', { replace: true })
   }
 
