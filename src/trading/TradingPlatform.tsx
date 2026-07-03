@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Symbol, MarketCode } from './data'
-import { MARKET_OPTIONS, FULL_MARKET_COLUMNS, FULL_MARKET, fmtPrice, fmtPct } from './data'
+import { FULL_MARKET_COLUMNS, FULL_MARKET, fmtPrice, fmtPct } from './data'
 import { Button } from './components/ui'
 import MarketStrip from './components/MarketStrip'
 import MarketIndices from './components/MarketIndices'
@@ -18,6 +18,7 @@ import ChartsScreen from './components/ChartsScreen'
 import Placeholder from './components/Placeholder'
 import FabTerminal from './components/FabTerminal'
 import BrokerDesk from './components/BrokerDesk'
+import OrderPlacementAI from './components/OrderPlacementAI'
 import TabBar from './components/TabBar'
 import BoardGrid from './components/BoardGrid'
 import { listen } from '@tauri-apps/api/event'
@@ -30,7 +31,7 @@ import FloatingToolbar from './components/FloatingToolbar'
 
 type Section = 'Pricing' | 'Trading' | 'Management'
 type Side = 'buy' | 'sell'
-type ScreenKey = 'market-watch' | 'full-market' | 'market-depth' | 'charts' | 'order-entry' | 'order-monitor' | 'basket' | 'portfolio' | 'broker-flow' | 'placeholder'
+type ScreenKey = 'market-watch' | 'full-market' | 'market-depth' | 'charts' | 'order-entry' | 'order-monitor' | 'basket' | 'portfolio' | 'broker-flow' | 'order-ai' | 'placeholder'
 
 interface NavLeaf { label: string; screen: ScreenKey }
 interface NavGroup { group: string; items: NavLeaf[] }
@@ -105,6 +106,7 @@ const NAV_TREE: NavSection[] = [
       ] },
       { group: 'Process', items: [
         { label: 'Order Placement', screen: 'broker-flow' },
+        { label: 'Order Placement · AI', screen: 'order-ai' },
       ] },
     ],
   },
@@ -257,6 +259,7 @@ type DetailedAction =
   | { kind: 'sell' }
   | { kind: 'search' }
   | { kind: 'broker' }
+  | { kind: 'broker-ai' }
   | { kind: 'pop'; panel: string; title: string }
   | { kind: 'redock' }
   | { kind: 'look' }
@@ -267,6 +270,7 @@ const DETAILED_HOTKEYS: { key: string; label: string; hint: string; action: Deta
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
   { key: 'F5', label: 'Order Placement', hint: 'Open Order Placement as its own window', action: { kind: 'broker' } },
+  { key: '⇧F5', label: 'Order · AI', hint: 'Open AI-assisted Order Placement as its own window', action: { kind: 'broker-ai' } },
   { key: 'F6', label: 'Market', hint: 'Send the market table to the board window', action: { kind: 'pop', panel: 'd-market', title: 'Market' } },
   { key: 'F7', label: 'Watchlist', hint: 'Send the watchlist to the board window', action: { kind: 'pop', panel: 'd-right', title: 'Watchlist' } },
   { key: 'F8', label: 'Indices', hint: 'Send the market indices to the board window', action: { kind: 'pop', panel: 'd-indices', title: 'Indices' } },
@@ -450,9 +454,15 @@ function LiveStatusPill({ market }: { market?: MarketCode }) {
 function UserMenu() {
   const [open, setOpen] = useState(false)
   const [version, setVersion] = useState('')
+  const navigate = useNavigate()
   useEffect(() => {
     if ('__TAURI_INTERNALS__' in window) void getVersion().then(setVersion).catch(() => {})
   }, [])
+  const signOut = () => {
+    setOpen(false)
+    try { sessionStorage.removeItem('lc-auth') } catch { /* ignore */ }
+    navigate('/login', { replace: true })
+  }
   return (
     <div className="relative border-l border-white/10 pl-3">
       <button
@@ -478,7 +488,14 @@ function UserMenu() {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
             Check for updates…
           </button>
-          <div className="px-3 pb-1.5 pt-1 text-[10px] text-content-subtle">{version ? `Version ${version}` : 'Desktop app'}</div>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); signOut() }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-down hover:bg-[rgba(255,255,255,0.06)]"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
+            Sign out
+          </button>
+          <div className="mt-1 border-t border-border-dark px-3 pb-1.5 pt-2 text-[10px] text-content-subtle">{version ? `Version ${version}` : 'Desktop app'}</div>
         </div>
       )}
     </div>
@@ -507,7 +524,6 @@ export default function TradingPlatform() {
   const [openSection, setOpenSection] = useState<Section>('Pricing')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['Pricing/Basic']))
   const [active, setActive] = useState<ActiveLeaf>(DEFAULT_LEAF)
-  const [market, setMarket] = useState(MARKET_OPTIONS[1])
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     FULL_MARKET_COLUMNS.filter((c) => c.default).map((c) => c.key),
@@ -525,6 +541,9 @@ export default function TradingPlatform() {
     return INITIAL_TABS.some((t) => t.id === requested) ? (requested as string) : 'dfm'
   })
   const current = tabs.find((t) => t.id === activeTab) ?? tabs[0]
+  // The active tab's market drives BOTH looks — Graph and Detailed — so Dubai
+  // and Abu Dhabi tabs show different data everywhere, not just in Graph.
+  const activeMarketName = current.market ? MARKET_TAB_LABEL[current.market] : 'All Markets'
 
   // ── Workspace look (Detailed ⇄ Graph) ──────────────────────────
   // Both designs live in one document; the backtick key (or the top-bar
@@ -602,7 +621,8 @@ export default function TradingPlatform() {
   const displayTabs = tabs
 
   // Open the Broker Flow in its own dedicated window.
-  const openBrokerFlow = () => { void openDetachedPanel('broker-flow', 'Order Placement') }
+  const openBrokerFlow = () => { void openDetachedPanel('broker-flow', 'Order Placement', { width: 1160, height: 880 }) }
+  const openOrderAI = () => { void openDetachedPanel('order-ai', 'Order Placement · AI', { width: 1160, height: 880 }) }
 
   // Global workspace shortcuts (both looks): F11 switches look, F5 opens the
   // Broker Flow as its own window. Handled here once so neither look double-fires.
@@ -610,7 +630,7 @@ export default function TradingPlatform() {
     const onKey = (e: KeyboardEvent) => {
       if (current.kind !== 'workspace') return
       if (e.key === 'F11') { e.preventDefault(); setViewMode((m) => (m === 'detailed' ? 'graph' : 'detailed')) }
-      else if (e.key === 'F5') { e.preventDefault(); openBrokerFlow() }
+      else if (e.key === 'F5') { e.preventDefault(); if (e.shiftKey) openOrderAI(); else openBrokerFlow() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -628,6 +648,7 @@ export default function TradingPlatform() {
       case 'sell': setTrade({ open: true, side: 'sell', symbol: null }); break
       case 'search': setDHelpOpen(false); document.getElementById('detailed-search')?.focus(); break
       case 'broker': setDHelpOpen(false); openBrokerFlow(); break
+      case 'broker-ai': setDHelpOpen(false); openOrderAI(); break
       case 'pop': setDHelpOpen(false); void sendToBoard(a.panel); break
       case 'redock': void closeBoard(); break
       case 'look': setViewMode((m) => (m === 'detailed' ? 'graph' : 'detailed')); break
@@ -719,7 +740,7 @@ export default function TradingPlatform() {
         // Dedicated maximized Full Market page: filter bar + table fill the area.
         return (
           <div className="flex min-h-0 flex-1 flex-col p-3">
-            <FullMarket visibleColumns={visibleColumns} onOpenColumns={() => setColumnsOpen(true)} onTrade={openTrade} />
+            <FullMarket visibleColumns={visibleColumns} onOpenColumns={() => setColumnsOpen(true)} onTrade={openTrade} defaultMarket={activeMarketName} />
           </div>
         )
       case 'market-depth':
@@ -737,6 +758,9 @@ export default function TradingPlatform() {
       case 'broker-flow':
         // The Broker Flow is the split-screen customer desk (widgets, no steps).
         return <div className="min-h-0 flex-1 overflow-hidden"><BrokerDesk /></div>
+      case 'order-ai':
+        // AI-assisted sibling of Order Placement (broker stays the decision maker).
+        return <div className="min-h-0 flex-1 overflow-hidden"><OrderPlacementAI onOpenWindow={openOrderAI} /></div>
       case 'placeholder':
         return screenWrap(<Placeholder title={active.label} group={active.group} />)
       default:
@@ -744,8 +768,8 @@ export default function TradingPlatform() {
         return (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-              <MarketIndices market={market} onPopOut={() => void sendToBoard('d-indices')} />
-              <FullMarket visibleColumns={visibleColumns} onOpenColumns={() => setColumnsOpen(true)} onTrade={openTrade} onPopOut={() => void sendToBoard('d-market')} />
+              <MarketIndices market={activeMarketName} onPopOut={() => void sendToBoard('d-indices')} />
+              <FullMarket visibleColumns={visibleColumns} onOpenColumns={() => setColumnsOpen(true)} onTrade={openTrade} onPopOut={() => void sendToBoard('d-market')} defaultMarket={activeMarketName} />
             </div>
             <RightPanel onTrade={openTrade} onPopOut={() => void sendToBoard('d-right')} />
           </div>
@@ -758,7 +782,7 @@ export default function TradingPlatform() {
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border-dark bg-[#0b1b4d] px-4">
         <Link to="/" className="flex items-center gap-2 text-white" title="Back to FAB eAccess">
-          <span className="text-[15px] font-bold tracking-tight">TRADE<span className="text-[#5b9bff]">NET</span> X</span>
+          <span className="text-[15px] font-bold tracking-tight">FAB <span className="text-[#5b9bff]">Trade</span></span>
         </Link>
         <span className="text-white/30">/</span>
         <span className="text-[13px] font-medium text-white/80">{current.title}</span>
@@ -780,24 +804,12 @@ export default function TradingPlatform() {
         )}
 
         <div className="ml-auto flex items-center gap-3">
-          {current.kind === 'workspace' && viewMode === 'graph' ? (
-            // Graph look: the dropdown drives THIS tab's market (real DFM / sim ADX).
+          {/* The tab's market drives both Graph and Detailed, so this selector
+              is shown for any workspace tab regardless of look. */}
+          {current.kind === 'workspace' && (
             <MarketTabSelect market={current.market ?? 'DFM'} onChange={(m) => setTabMarket(current.id, m)} />
-          ) : (
-            <div className="relative">
-              <select
-                value={market}
-                onChange={(e) => setMarket(e.target.value)}
-                className="h-8 appearance-none rounded-md border border-white/10 bg-white/5 pl-2.5 pr-8 text-[13px] text-white outline-none focus:border-[#5b9bff]"
-              >
-                {MARKET_OPTIONS.map((m) => (
-                  <option key={m} className="bg-surface">{m}</option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/60" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-            </div>
           )}
-          <LiveStatusPill market={current.kind === 'workspace' && viewMode === 'graph' ? current.market ?? 'DFM' : undefined} />
+          <LiveStatusPill market={current.kind === 'workspace' ? current.market ?? 'DFM' : undefined} />
           <WorkspaceMenu />
           <div className="flex items-center gap-2 border-l border-white/10 pl-3">
             <span className="flex items-center gap-1.5 text-[12px] text-white/70">
@@ -929,6 +941,7 @@ export default function TradingPlatform() {
             market={current.market ?? 'DFM'}
             onTrade={openTrade}
             onBrokerFlow={openBrokerFlow}
+            onOrderAI={openOrderAI}
           />
         </div>
       ) : (

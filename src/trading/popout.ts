@@ -41,15 +41,17 @@ export async function closeBoard() {
 
 /** Open a single component in its OWN dedicated window (focus it if already
  *  open). Used by the F5 Broker Flow shortcut. */
-export async function openDetachedPanel(id: string, title: string) {
+export async function openDetachedPanel(id: string, title: string, opts?: { width?: number; height?: number }) {
   const label = `panel-${id}`
+  const width = opts?.width ?? 780
+  const height = opts?.height ?? 880
   if (inTauri) {
     const existing = await WebviewWindow.getByLabel(label)
     if (existing) { await existing.setFocus(); return }
-    new WebviewWindow(label, { url: `/?detach=${id}`, title, width: 780, height: 880, resizable: true })
+    new WebviewWindow(label, { url: `/?detach=${id}`, title, width, height, resizable: true })
     return
   }
-  window.open(`/?detach=${id}`, label, 'popup,width=780,height=880')
+  window.open(`/?detach=${id}`, label, `popup,width=${width},height=${height}`)
 }
 
 // ── Dock the board back into the main window ─────────────────────────────────

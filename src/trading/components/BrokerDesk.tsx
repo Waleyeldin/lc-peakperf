@@ -196,7 +196,7 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: BLUE, background: 'rgba(0,98,255,0.08)' }}>
       <div className="flex items-center justify-between px-3 py-2 text-white" style={{ background: BLUE }}>
         <span className="text-[13px] font-bold uppercase tracking-wide">Buy</span>
-        <button onClick={add} className="rounded bg-white/20 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/30">+ Add instrument</button>
+        <button onClick={add} className="rounded bg-white/20 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/30">+ Add line</button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3">
         {lines.map((l) => (
@@ -455,16 +455,27 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
 }
 
 // ─── Right: stacked customers + SIF entry ────────────────────────────────────
-function CustomerArea({ watchSymbol }: { watchSymbol: string }) {
-  // Start empty — no customer pre-loaded; the broker opens one by CIF.
-  const [open, setOpen] = useState<DeskCustomer[]>([])
-  const [activeSif, setActiveSif] = useState('') // which open client's tab is shown
-  const [vipMap, setVipMap] = useState<Record<string, boolean>>({}) // manual VIP overrides, survive tab switches
+// Session snapshot (shared across the app's windows) so "Dock to main" and
+// reopening restore the open client tabs instead of refreshing to empty.
+const DESK_SESSION_KEY = 'order-placement-session-v1'
+interface DeskSnapshot { openSifs: string[]; activeSif: string; pinned: string[]; vipMap: Record<string, boolean> }
+function loadDeskSnapshot(): DeskSnapshot | null {
+  try { const raw = localStorage.getItem(DESK_SESSION_KEY); return raw ? (JSON.parse(raw) as DeskSnapshot) : null } catch { return null }
+}
+
+function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: string; compact?: boolean; snapshotRef?: { current: DeskSnapshot | null } }) {
+  // Only the docked (compact) instance restores a session; fresh opens start empty.
+  const snap = useMemo(() => (compact ? loadDeskSnapshot() : null), [compact])
+  const [open, setOpen] = useState<DeskCustomer[]>(() => (snap?.openSifs ?? []).map((sif) => DESK_CUSTOMERS.find((c) => c.sif === sif)).filter((c): c is DeskCustomer => Boolean(c)))
+  const [activeSif, setActiveSif] = useState(() => snap?.activeSif ?? '') // which open client's tab is shown
+  const [vipMap, setVipMap] = useState<Record<string, boolean>>(() => snap?.vipMap ?? {}) // manual VIP overrides, survive tab switches
   const [dragSif, setDragSif] = useState<string | null>(null) // tab being dragged to reorder
-  const [pinned, setPinned] = useState<Set<string>>(new Set()) // pinned tabs — kept, close-protected
+  const [pinned, setPinned] = useState<Set<string>>(() => new Set(snap?.pinned ?? [])) // pinned tabs — kept, close-protected
   const [cif, setCif] = useState('')
   const [error, setError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Keep the parent's snapshot ref current so "Dock to main" can hand it over.
+  if (snapshotRef) snapshotRef.current = { openSifs: open.map((c) => c.sif), activeSif, pinned: [...pinned], vipMap }
   const isVip = (c: DeskCustomer) => vipMap[c.sif] ?? c.vip
   const toggleVip = (c: DeskCustomer) => setVipMap((m) => ({ ...m, [c.sif]: !(m[c.sif] ?? c.vip) }))
 
@@ -705,6 +716,12 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
     setToasts((t) => [...t, { id, msg, tone }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800)
   }, [])
+  // Save the open-tabs snapshot only when docking, so the docked copy restores it.
+  const snapshotRef = useRef<DeskSnapshot | null>(null)
+  const handleDock = () => {
+    try { if (snapshotRef.current) localStorage.setItem(DESK_SESSION_KEY, JSON.stringify(snapshotRef.current)) } catch { /* ignore */ }
+    onDock?.()
+  }
 
   return (
     <ToastCtx.Provider value={notify}>
@@ -721,7 +738,7 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
           </button>
           {onDock && (
             <button
-              onClick={onDock}
+              onClick={handleDock}
               title="Bring this into the main window"
               className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
             >
@@ -739,7 +756,7 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
             </div>
           )}
           <div className="min-h-0 min-w-0 flex-1">
-            <CustomerArea watchSymbol={watchSymbol} />
+            <CustomerArea watchSymbol={watchSymbol} compact={compact} snapshotRef={snapshotRef} />
           </div>
         </div>
       </div>

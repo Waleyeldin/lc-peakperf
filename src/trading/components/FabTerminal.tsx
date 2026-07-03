@@ -418,7 +418,7 @@ function HeroPanel({ sym, onTrade, tick }: { sym: Symbol; onTrade: (symbol: Symb
         </div>
       }
       actions={
-        <div className="flex items-center gap-1.5 pr-7">
+        <div className="flex items-center gap-1.5 pr-14">
           <Button variant="buy" size="sm" onClick={() => onTrade(sym, 'buy')}>Buy</Button>
           <Button variant="sell" size="sm" onClick={() => onTrade(sym, 'sell')}>Sell</Button>
         </div>
@@ -968,7 +968,7 @@ function NewsPanel({ selected, onOpen }: { selected: Symbol; onOpen: (i: NewsIte
     <Panel
       title="News"
       // Right padding keeps the toggle clear of the panel's hover drag / pop-out controls.
-      actions={<div className="pr-10"><SegmentedTabs tabs={NEWS_FILTERS} value={filter} onChange={setFilter} /></div>}
+      actions={<div className="pr-14"><SegmentedTabs tabs={NEWS_FILTERS} value={filter} onChange={setFilter} /></div>}
       bodyClassName="overflow-y-auto"
       noPadding
     >
@@ -1143,6 +1143,8 @@ function Header({
   canReset,
   market,
   symbols,
+  hidden,
+  onShow,
 }: {
   selected: Symbol
   onSelect: (s: Symbol) => void
@@ -1150,9 +1152,12 @@ function Header({
   canReset: boolean
   market: MarketCode
   symbols: Symbol[]
+  hidden: PanelId[]
+  onShow: (id: PanelId) => void
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const { status, quotes } = useLiveData()
   // DFM has a genuine Yahoo feed; ADX / Nasdaq are always simulated.
   const isLive = marketHasLiveFeed(market) && status === 'live' && quotes.size > 0
@@ -1225,6 +1230,30 @@ function Header({
           <span className="text-[13px] leading-none">⠿</span>
           Drag to rearrange · resize edges
         </span>
+        {hidden.length > 0 && (
+          <div className="relative">
+            <Button variant="default" size="sm" onClick={() => setAddOpen((o) => !o)} onBlur={() => setTimeout(() => setAddOpen(false), 150)} title="Show a hidden panel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              Add panel
+              <span className="rounded-full bg-action px-1.5 text-[10px] font-semibold text-white">{hidden.length}</span>
+            </Button>
+            {addOpen && (
+              <div className="absolute right-0 top-9 z-50 w-52 rounded-lg border border-border-dark bg-surface py-1 shadow-2xl">
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Hidden panels</div>
+                {hidden.map((id) => (
+                  <button
+                    key={id}
+                    onMouseDown={(e) => { e.preventDefault(); onShow(id); setAddOpen(false) }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-content hover:bg-[rgba(255,255,255,0.06)]"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-content-muted"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    {PANEL_TITLES[id]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <Button variant="ghost" size="sm" onClick={resetLayout} disabled={!canReset} title="Restore the default panel layout">
           Reset layout
         </Button>
@@ -1386,6 +1415,7 @@ function DraggablePanel({
   onResizeSpan,
   onToggleFullWidth,
   onTearOut,
+  onHide,
   highlight,
   children,
 }: {
@@ -1400,12 +1430,12 @@ function DraggablePanel({
   onResizeSpan: (id: PanelId, span: number) => void
   onToggleFullWidth: (id: PanelId) => void
   onTearOut?: (id: PanelId, screenX?: number, screenY?: number) => void
+  onHide?: (id: PanelId) => void
   highlight?: boolean
   children: ReactNode
 }) {
-  // Drag is only armed when the grip handle is pressed, so buttons/charts inside
-  // the panel never start an accidental drag.
-  const [armed, setArmed] = useState(false)
+  // Drag happens from the header (a strip below the header actions), so charts /
+  // buttons inside the panel never start an accidental drag.
   const [resizing, setResizing] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   // Captured at pointer-down so a continuous drag maps px → column delta
@@ -1448,15 +1478,9 @@ function DraggablePanel({
       ref={wrapperRef}
       data-panel-id={id}
       style={{ gridColumn: `span ${span} / span ${span}` }}
-      className={`group relative h-full [&>section]:h-full transition-shadow ${isDragging ? 'opacity-50' : ''} ${
+      className={`group relative isolate h-full [&>section]:h-full transition-shadow ${isDragging ? 'opacity-50' : ''} ${
         isOver ? 'rounded-xl ring-2 ring-action/70' : ''
       } ${highlight ? 'rounded-xl ring-2 ring-action shadow-[0_0_0_4px_rgba(0,98,255,0.25)]' : ''}`}
-      draggable={armed}
-      onDragStart={(e: DragEvent<HTMLDivElement>) => {
-        e.dataTransfer.setData('text/plain', id)
-        e.dataTransfer.effectAllowed = 'move'
-        onDragStartPanel(id)
-      }}
       onDragOver={(e: DragEvent<HTMLDivElement>) => {
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
@@ -1465,45 +1489,52 @@ function DraggablePanel({
       onDrop={(e: DragEvent<HTMLDivElement>) => {
         e.preventDefault()
         onDropPanel(id)
-        setArmed(false)
-      }}
-      onDragEnd={(e: DragEvent<HTMLDivElement>) => {
-        setArmed(false)
-        // Released outside this app window → tear the panel off into its own
-        // window at the drop point. (The ⤢ button is the guaranteed path.)
-        const outside =
-          e.screenX < window.screenX ||
-          e.screenX > window.screenX + window.outerWidth ||
-          e.screenY < window.screenY ||
-          e.screenY > window.screenY + window.outerHeight
-        if (outside && e.screenX !== 0 && e.screenY !== 0) onTearOut?.(id, e.screenX, e.screenY)
-        onDragEndPanel()
       }}
     >
-      <div className="pointer-events-none absolute right-1.5 top-1.5 z-30 flex items-center gap-0.5 rounded-md border border-border-dark bg-surface/95 px-0.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-        <button
-          type="button"
-          aria-label="Send panel to the Workspace board"
-          title="Send to the Workspace board (drag/arrange on another monitor)"
-          onClick={() => onTearOut?.(id)}
-          className="flex h-5 w-5 items-center justify-center rounded text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 4h6v6" />
-            <path d="M20 4l-8 8" />
-            <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          aria-label="Drag to rearrange panel"
-          title="Drag to rearrange · drag off the window to pop out"
-          onPointerDown={() => setArmed(true)}
-          onPointerUp={() => setArmed(false)}
-          className="flex h-5 w-5 cursor-grab items-center justify-center rounded text-[13px] leading-none text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content active:cursor-grabbing"
-        >
-          ⠿
-        </button>
+      {/* Drag the title bar to reorder (drag off the window to pop out). Sits
+          under the header actions (z-20) so those stay clickable. */}
+      <div
+        draggable
+        onDragStart={(e: DragEvent<HTMLDivElement>) => {
+          e.dataTransfer.setData('text/plain', id)
+          e.dataTransfer.effectAllowed = 'move'
+          if (wrapperRef.current) e.dataTransfer.setDragImage(wrapperRef.current, 24, 16)
+          onDragStartPanel(id)
+        }}
+        onDragEnd={(e: DragEvent<HTMLDivElement>) => {
+          const outside =
+            e.screenX < window.screenX ||
+            e.screenX > window.screenX + window.outerWidth ||
+            e.screenY < window.screenY ||
+            e.screenY > window.screenY + window.outerHeight
+          if (outside && e.screenX !== 0 && e.screenY !== 0) onTearOut?.(id, e.screenX, e.screenY)
+          onDragEndPanel()
+        }}
+        title="Drag the header to move · drag off the window to pop out"
+        className="absolute left-0 right-0 top-0 z-10 h-11 cursor-move"
+      />
+      {/* Hide + send-to-board as a bordered button group (detailed-view style). */}
+      <div className="absolute right-1.5 top-0 z-30 flex h-11 items-center">
+        <div className="flex items-center gap-0.5 rounded-md border border-border-dark bg-[#1a1c1e] px-0.5 py-0.5 shadow-sm">
+          <button
+            type="button"
+            aria-label="Hide panel"
+            title="Hide this panel"
+            onClick={() => onHide?.(id)}
+            className="flex h-6 w-6 items-center justify-center rounded text-content-muted transition-colors hover:bg-[rgba(255,255,255,0.08)] hover:text-content"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><path d="M1 1l22 22" /><path d="M6.61 6.61A13.5 13.5 0 0 0 1 12s4 8 11 8a9.7 9.7 0 0 0 5.39-1.61" /></svg>
+          </button>
+          <button
+            type="button"
+            aria-label="Send panel to the Workspace board"
+            title="Send to the Workspace board"
+            onClick={() => onTearOut?.(id)}
+            className="flex h-6 w-6 items-center justify-center rounded text-content-muted transition-colors hover:bg-[rgba(255,255,255,0.08)] hover:text-content"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4h6v6" /><path d="M20 4l-8 8" /><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
+          </button>
+        </div>
       </div>
       {children}
       {/* Width indicator (only while actively resizing). */}
@@ -1544,6 +1575,7 @@ type HotkeyAction =
   | { kind: 'search' }
   | { kind: 'reset' }
   | { kind: 'broker' }
+  | { kind: 'broker-ai' }
   | { kind: 'panel'; panel: PanelId }
 
 const HOTKEYS: { key: string; label: string; hint: string; action: HotkeyAction }[] = [
@@ -1552,6 +1584,7 @@ const HOTKEYS: { key: string; label: string; hint: string; action: HotkeyAction 
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket for the selected symbol', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
   { key: 'F5', label: 'Order Placement', hint: 'Open Order Placement as its own window', action: { kind: 'broker' } },
+  { key: '⇧F5', label: 'Order · AI', hint: 'Open AI-assisted Order Placement as its own window', action: { kind: 'broker-ai' } },
   { key: 'F6', label: 'Movers', hint: 'Jump to the Top Movers panel', action: { kind: 'panel', panel: 'movers' } },
   { key: 'F7', label: 'Order Book', hint: 'Jump to the Order Book panel', action: { kind: 'panel', panel: 'orderbook' } },
   { key: 'F8', label: 'News', hint: 'Jump to the News panel', action: { kind: 'panel', panel: 'news' } },
@@ -1688,7 +1721,7 @@ export function DetachedPanel({ id }: { id: string }) {
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
-export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: { onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; onBrokerFlow?: () => void; market?: MarketCode }) {
+export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market = 'DFM' }: { onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; onBrokerFlow?: () => void; onOrderAI?: () => void; market?: MarketCode }) {
   const [selected, setSelected] = useState<Symbol>(() => defaultSymbolFor(market))
   const [newsItem, setNewsItem] = useState<NewsItem | null>(null)
   const tick = useLiveTick()
@@ -1783,6 +1816,11 @@ export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: {
     }
   }
 
+  // Hide a panel (remove from the grid) / bring a hidden one back.
+  const handleHide = (id: PanelId) => setOrder((prev) => prev.filter((x) => x !== id))
+  const handleShow = (id: PanelId) => setOrder((prev) => (prev.includes(id) ? prev : [...prev, id]))
+  const hiddenPanels = DEFAULT_ORDER.filter((id) => !order.includes(id))
+
   // Scroll a panel into view and flash a ring around it for ~1.4s.
   const focusPanel = (id: PanelId) => {
     setFlashId(id)
@@ -1799,6 +1837,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: {
       case 'search': setHelpOpen(false); document.getElementById('terminal-symbol-search')?.focus(); break
       case 'reset': resetLayout(); break
       case 'broker': setHelpOpen(false); onBrokerFlow?.(); break
+      case 'broker-ai': setHelpOpen(false); onOrderAI?.(); break
       case 'panel': setHelpOpen(false); focusPanel(a.panel); break
     }
   }
@@ -1825,7 +1864,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
-      <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} />
+      <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid auto-rows-auto grid-flow-dense grid-cols-12 gap-3">
           {order.map((id) => {
@@ -1847,6 +1886,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: {
                 onResizeSpan={handleResizeSpan}
                 onToggleFullWidth={handleToggleFullWidth}
                 onTearOut={popOut}
+                onHide={handleHide}
                 highlight={flashId === def.id}
               >
                 {def.render()}

@@ -1,0 +1,808 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode, PointerEvent as ReactPointerEvent } from 'react'
+import { FULL_MARKET, fmtPrice, fmtInt, fmtPct } from '../data'
+import { DESK_CUSTOMERS, findCustomer } from '../deskData'
+import type { DeskCustomer } from '../deskData'
+import { usePrices } from '../simData'
+
+/**
+ * Order Placement · AI — a sibling of the Order Placement desk where AI removes
+ * operational work while the broker stays the decision maker. It implements the
+ * AI-assisted broker journey: verify → profile → capture request → market
+ * context → recommendation → risk → compliance → buying power → broker confirms
+ * → summary → CRM → next best actions.
+ *
+ * The "AI" here is simulated but data-driven (it reads the real client + market
+ * data). No trade is ever auto-executed — the broker presses Place.
+ */
+
+const BLUE = '#0062ff'
+const fmtMoney = (n: number) => 'AED ' + Math.round(n).toLocaleString('en-US')
+
+type Side = 'buy' | 'sell'
+interface OrderLine { id: number; side: Side; symbol: string; qty: number }
+type CheckTone = 'pass' | 'warn' | 'block' | 'info'
+
+// ── Little AI mark ───────────────────────────────────────────────────────────
+function Sparkle({ className = '' }: { className?: string }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M12 2l1.6 4.8L18.4 8.4 13.6 10 12 14.8 10.4 10 5.6 8.4l4.8-1.6L12 2z" />
+      <path d="M18.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z" opacity=".7" />
+    </svg>
+  )
+}
+
+/**
+ * Parse a free-text / dictated instruction that may contain SEVERAL orders,
+ * e.g. "buy 100k Emaar, 50k DIB and sell 30k SALIK". Splits into segments and
+ * carries the running side across them, returning one entry per complete order.
+ */
+function parseRequestMulti(text: string): { side: Side; symbol: string; qty: number }[] {
+  const segments = text.toLowerCase().split(/,|;|\/|\band\b|\bthen\b|\bplus\b|\balso\b|\n/).map((s) => s.trim()).filter(Boolean)
+  const out: { side: Side; symbol: string; qty: number }[] = []
+  let side: Side = 'buy'
+  for (const seg of segments) {
+    const t = ` ${seg} `
+    if (/\b(buy|add|acquire|accumulate|long|increase)\b/.test(t)) side = 'buy'
+    else if (/\b(sell|trim|reduce|offload|exit|short|liquidate|dump)\b/.test(t)) side = 'sell'
+
+    let qty = 0
+    const m = t.match(/([\d][\d,.]*)\s*(k|m|thousand|million|mn)?/)
+    if (m) {
+      let n = parseFloat(m[1].replace(/,/g, ''))
+      const suf = m[2]
+      if (suf === 'k' || suf === 'thousand') n *= 1_000
+      if (suf === 'm' || suf === 'mn' || suf === 'million') n *= 1_000_000
+      if (Number.isFinite(n) && n > 0) qty = Math.round(n)
+    }
+
+    const s =
+      FULL_MARKET.find((x) => t.includes(` ${x.symbolShortName.toLowerCase()} `)) ??
+      FULL_MARKET.find((x) => t.includes(x.symbolName.toLowerCase()))
+    if (s && qty > 0) out.push({ side, symbol: s.symbolShortName, qty })
+  }
+  return out
+}
+
+// ── Live advisory: "what to pitch, and why" ──────────────────────────────────
+type PitchTone = 'sell' | 'buy' | 'switch'
+interface PitchIdea { tone: PitchTone; tag: string; headline: string; why: string; prefill: string }
+
+/** Data-driven pitch ideas from the client's holdings + market momentum. */
+function pitchIdeas(client: DeskCustomer, price: (s: string) => { last: number; changePct: number } | null): PitchIdea[] {
+  const ideas: PitchIdea[] = []
+  for (const h of client.holdings) {
+    const s = FULL_MARKET.find((x) => x.symbolShortName === h.symbol)
+    if (!s) continue
+    const q = price(h.symbol)
+    const last = q?.last ?? s.lastPrice
+    const chg = q?.changePct ?? s.changePct
+    const toHigh = s.weekHigh52 > 0 ? (s.weekHigh52 - last) / s.weekHigh52 : 1
+    if (toHigh < 0.05 && chg >= 0) {
+      ideas.push({
+        tone: 'sell', tag: 'Take profit',
+        headline: `${h.symbol} near its 52-week high`,
+        why: `Only ${(toHigh * 100).toFixed(1)}% below the 52-week high (${fmtPrice(s.weekHigh52)}) and ${fmtPct(chg)} today — upside looks limited and it may pull back. Pitch trimming to lock in gains.`,
+        prefill: `Sell ${h.symbol}`,
+      })
+    } else if (chg >= 2) {
+      ideas.push({
+        tone: 'buy', tag: 'Momentum',
+        headline: `${h.symbol} has room to run`,
+        why: `Up ${fmtPct(chg)} today with the 52-week high still ${(toHigh * 100).toFixed(0)}% away (${fmtPrice(s.weekHigh52)}). Pitch holding or adding while momentum lasts.`,
+        prefill: `Buy ${h.symbol}`,
+      })
+    }
+  }
+  const base = FULL_MARKET.find((x) => x.symbolShortName === client.usualStocks[0])
+  if (base) {
+    const baseChg = price(base.symbolShortName)?.changePct ?? base.changePct
+    const alt = FULL_MARKET
+      .filter((x) => x.sector === base.sector && x.symbolShortName !== base.symbolShortName && x.lastPrice > 0)
+      .map((x) => ({ x, c: price(x.symbolShortName)?.changePct ?? x.changePct }))
+      .sort((a, b) => b.c - a.c)[0]
+    if (alt && alt.c > baseChg + 0.5) {
+      ideas.push({
+        tone: 'switch', tag: 'Stronger alternative',
+        headline: `${alt.x.symbolShortName} is outpacing ${base.symbolShortName}`,
+        why: `Same sector (${base.sector}) — ${alt.x.symbolShortName} is ${fmtPct(alt.c)} vs ${base.symbolShortName} ${fmtPct(baseChg)} today. If the client is open to it, pitch switching or diversifying into it.`,
+        prefill: `Buy ${alt.x.symbolShortName}`,
+      })
+    }
+  }
+  return ideas.slice(0, 4)
+}
+
+// ── Small building blocks ────────────────────────────────────────────────────
+function CheckRow({ tone, title, detail, action }: { tone: CheckTone; title: string; detail: ReactNode; action?: ReactNode }) {
+  const dot = tone === 'pass' ? 'bg-up' : tone === 'warn' ? 'bg-warning' : tone === 'block' ? 'bg-down' : 'bg-[#5b9bff]'
+  const ico = tone === 'pass' ? '✓' : tone === 'warn' ? '!' : tone === 'block' ? '✕' : 'i'
+  return (
+    <li className="flex items-start gap-2.5 px-3 py-2">
+      <span className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-[#0b0c0d] ${dot}`}>{ico}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-medium text-content">{title}</div>
+        <div className="text-[11px] leading-relaxed text-content-muted">{detail}</div>
+      </div>
+      {action}
+    </li>
+  )
+}
+
+function Field({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-content-muted">{label}</span>
+      <span className={`text-[12px] tabular-nums ${tone ?? 'text-content'}`}>{value}</span>
+    </div>
+  )
+}
+
+// Deterministic "voiceprint match" for the demo (95–99%).
+const voiceMatchPct = (sif: string) => 95 + ([...sif].reduce((a, c) => a + c.charCodeAt(0), 0) % 5)
+
+// Track an element's live width so the layout can switch between the wide
+// (3-column, like the window) and narrow (stacked) designs.
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [w, setW] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    setW(el.getBoundingClientRect().width)
+    const ro = new ResizeObserver((entries) => { const x = entries[0]?.contentRect.width; if (x) setW(x) })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, w] as const
+}
+
+// "What to pitch" advisory — reused in the client column (wide) or after the
+// request (narrow).
+function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string) => void }) {
+  if (ideas.length === 0) return null
+  return (
+    <div className="rounded-xl border border-border-dark bg-surface">
+      <div className="flex items-center gap-1.5 border-b border-border-dark px-3 py-2 text-[12px] font-semibold text-content">
+        <Sparkle className="text-[#5b9bff]" /> What to pitch
+        <span className="ml-auto text-[10px] font-normal text-content-subtle">live advisory</span>
+      </div>
+      <ul className="divide-y divide-border-dark">
+        {ideas.map((idea, i) => {
+          const chip = idea.tone === 'sell' ? 'bg-offer-surface text-down' : idea.tone === 'buy' ? 'bg-bid-surface text-up' : 'bg-[rgba(0,98,255,0.14)] text-[#5b9bff]'
+          return (
+            <li key={i} className="p-3">
+              <div className="mb-1 flex items-center gap-2">
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${chip}`}>{idea.tag}</span>
+                <span className="text-[12px] font-semibold text-content">{idea.headline}</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-content-muted">{idea.why}</p>
+              <button onClick={() => onUse(idea.prefill)} className="mt-1.5 rounded border border-border-dark bg-[#1f2226] px-2 py-0.5 text-[10px] font-medium text-content hover:bg-[#262a2f]">Prefill “{idea.prefill}”</button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+// ── Client column: CIF search + verify + snapshot ────────────────────────────
+function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [] }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[] }) {
+  const [cif, setCif] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const price = usePrices()
+  const matches = useMemo(() => {
+    const q = cif.trim().toLowerCase()
+    const d = cif.replace(/\D/g, '')
+    if (!q) return DESK_CUSTOMERS
+    return DESK_CUSTOMERS.filter((c) => (d !== '' && c.cif.includes(d)) || c.name.toLowerCase().includes(q) || c.sif.toLowerCase().includes(q))
+  }, [cif])
+  const open = (c: DeskCustomer) => { setCif(''); setPickerOpen(false); onOpen(c) }
+
+  const holdings = client?.holdings ?? []
+  const totalMV = holdings.reduce((s, h) => s + (price(h.symbol)?.last ?? h.evalPrice) * h.quantity, 0)
+
+  return (
+    <div className={`flex min-h-0 shrink-0 flex-col gap-3 overflow-y-auto ${narrow ? 'order-1 w-full' : 'w-[320px]'}`}>
+      {/* Verify + open */}
+      <div className="rounded-xl border border-border-dark bg-surface p-3">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-subtle">
+          <Sparkle className="text-[#5b9bff]" /> Verify &amp; open client
+        </div>
+        <div className="relative">
+          <input
+            value={cif}
+            onChange={(e) => { setCif(e.target.value); setPickerOpen(true) }}
+            onFocus={() => setPickerOpen(true)}
+            onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { const c = findCustomer(cif); if (c) open(c) } }}
+            placeholder="Caller CIF / name…"
+            className="h-9 w-full rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
+          />
+          {pickerOpen && matches.length > 0 && (
+            <ul className="absolute left-0 top-full z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border-dark bg-surface shadow-xl">
+              {matches.map((c) => (
+                <li key={c.sif}>
+                  <button onMouseDown={(e) => { e.preventDefault(); open(c) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[rgba(0,98,255,0.12)]">
+                    <span className="rounded bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#9cc0ff]">{c.cif}</span>
+                    <span className="flex-1 truncate font-medium text-content">{c.name}</span>
+                    {c.vip && <span className="text-[10px] font-bold text-[#f0c33b]">★</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {DESK_CUSTOMERS.filter((c) => c.vip).map((c) => (
+            <button key={c.sif} onClick={() => open(c)} className="rounded border border-[rgba(240,185,11,0.35)] bg-[rgba(240,185,11,0.08)] px-2 py-0.5 text-[10px] text-content-muted hover:text-content" title={`Open ${c.name}`}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Verifying: show HOW the AI verifies the caller */}
+      {verifying ? (
+        <div className="rounded-xl border border-border-dark bg-surface p-3">
+          <div className="mb-2.5 flex items-center gap-2 text-[12px] font-semibold text-content">
+            <Sparkle className="animate-pulse text-[#5b9bff]" /> AI verifying caller…
+          </div>
+          <ul className="flex flex-col gap-2.5 text-[11px]">
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0">📞</span>
+              <span className="text-content-muted">Inbound caller‑ID <span className="tabular-nums text-content">{verifying.phone}</span> → matched to <span className="text-content">CIF {verifying.cif}</span> ({verifying.name}).</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0">🎙️</span>
+              <span className="text-content-muted">Analysing voiceprint against enrolled sample — <span className="font-semibold text-up">{voiceMatchPct(verifying.sif)}% match</span>.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 text-[#5b9bff]"><Sparkle /></span>
+              <span className="text-content-muted">Confirming identity &amp; loading profile…</span>
+            </li>
+          </ul>
+        </div>
+      ) : client ? (
+        <>
+          <div className="rounded-xl border border-border-dark bg-surface">
+            <div className="flex items-center gap-2 border-b border-border-dark px-3 py-2">
+              <span className="rounded bg-[rgba(47,208,122,0.16)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-up">✓ Verified</span>
+              <span className="truncate text-[13px] font-semibold text-content">{client.name}</span>
+              {client.vip && <span className="ml-auto rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b]">VIP</span>}
+            </div>
+            {/* How the caller was verified */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-dark bg-[#15171a] px-3 py-1.5 text-[10px] text-content-muted">
+              <span>📞 <span className="tabular-nums text-content">{client.phone}</span> matched</span>
+              <span className="text-up">🎙️ {voiceMatchPct(client.sif)}% voice match</span>
+              <span className="text-content-subtle">via caller‑ID + voiceprint</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 p-3">
+              <Field label="CIF" value={client.cif} />
+              <Field label="Risk" value={client.risk} />
+              <Field label="KYC" value={client.kyc} tone={client.kyc === 'Valid' ? 'text-up' : 'text-warning'} />
+              <Field label="Day P/L" value={`${client.dayPnlPct >= 0 ? '+' : ''}${client.dayPnlPct.toFixed(1)}%`} tone={client.dayPnlPct >= 0 ? 'text-up' : 'text-down'} />
+              <Field label="Available cash" value={fmtMoney(client.cash)} />
+              <Field label="Portfolio MV" value={fmtMoney(totalMV)} />
+            </div>
+            {client.flag && (
+              <div className="flex items-start gap-2 border-t border-[rgba(255,170,0,0.3)] bg-[rgba(255,170,0,0.1)] px-3 py-2 text-[11px] text-warning">
+                <span>⚠</span><span>{client.flag}</span>
+              </div>
+            )}
+            <div className="border-t border-border-dark px-3 py-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Top holdings</div>
+              <ul className="flex flex-col gap-1">
+                {holdings.slice(0, 4).map((h) => (
+                  <li key={h.symbol} className="flex items-center justify-between text-[11px] tabular-nums">
+                    <span className="font-medium text-content">{h.symbol}</span>
+                    <span className="text-content-muted">{fmtInt(h.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Advisory (wide) — only once the client has stated a request. The
+              narrow layout renders it below the request in the parent. */}
+          {showAdvisory && <AdvisoryCard ideas={ideas} onUse={onUseIdea ?? (() => {})} />}
+        </>
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border-dark p-6 text-center text-[12px] text-content-muted">
+          Verify a caller to begin. AI matches their number to the CIF, checks their voiceprint, and loads profile, portfolio &amp; risk automatically.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Session snapshot persisted to localStorage — shared across the app's windows,
+// so "Dock to main" (and reopening) restores the desk instead of refreshing it.
+interface AiSnapshot {
+  clientSif: string | null
+  orders: OrderLine[]
+  request: string
+  placed: boolean
+  casaMoved: number
+  transcript: { id: number; speaker: 'Broker' | 'Client' | 'AI'; text: string; time: string }[]
+}
+const AI_SESSION_KEY = 'order-ai-session-v1'
+function loadAiSnapshot(): AiSnapshot | null {
+  try { const raw = localStorage.getItem(AI_SESSION_KEY); return raw ? (JSON.parse(raw) as AiSnapshot) : null } catch { return null }
+}
+
+// ── Root ─────────────────────────────────────────────────────────────────────
+export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow }: { compact?: boolean; onDock?: () => void; onOpenWindow?: () => void }) {
+  const price = usePrices()
+  // Only the docked (compact) instance restores state — a fresh open starts blank.
+  const snap = useMemo(() => (compact ? loadAiSnapshot() : null), [compact])
+  const [client, setClient] = useState<DeskCustomer | null>(() => (snap?.clientSif ? DESK_CUSTOMERS.find((c) => c.sif === snap.clientSif) ?? null : null))
+  const [verifying, setVerifying] = useState<DeskCustomer | null>(null)
+  const [request, setRequest] = useState(() => snap?.request ?? '')
+  const [orders, setOrders] = useState<OrderLine[]>(() => snap?.orders ?? [])
+  const [placed, setPlaced] = useState(() => snap?.placed ?? false)
+  const [casaMoved, setCasaMoved] = useState(() => snap?.casaMoved ?? 0) // funds moved from CASA into the trading account
+  const lineId = useRef((snap?.orders ?? []).reduce((m, o) => Math.max(m, o.id), 0))
+  const makeLine = (side: Side, symbol: string, qty: number): OrderLine => ({ id: ++lineId.current, side, symbol, qty })
+  const updateLine = (id: number, patch: Partial<OrderLine>) => setOrders((os) => os.map((o) => (o.id === id ? { ...o, ...patch } : o)))
+  const removeLine = (id: number) => setOrders((os) => os.filter((o) => o.id !== id))
+  const addLine = () => setOrders((os) => [...os, makeLine('buy', FULL_MARKET.find((s) => s.lastPrice > 0)!.symbolShortName, 10_000)])
+  const [transcript, setTranscript] = useState<{ id: number; speaker: 'Broker' | 'Client' | 'AI'; text: string; time: string }[]>(() => snap?.transcript ?? [])
+  const turnId = useRef((snap?.transcript ?? []).reduce((m, t) => Math.max(m, t.id), 0))
+  const sessionRef = useRef(0) // bumps on reset / new call so stale scripted turns are dropped
+
+  // Save a snapshot only when docking, so the docked copy restores exactly what
+  // was on the window (fresh opens stay blank).
+  const handleDock = () => {
+    try {
+      localStorage.setItem(AI_SESSION_KEY, JSON.stringify({ clientSif: client?.sif ?? null, orders, request, placed, casaMoved, transcript }))
+    } catch { /* ignore */ }
+    onDock?.()
+  }
+
+  const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const addTurn = (speaker: 'Broker' | 'Client' | 'AI', text: string) =>
+    setTranscript((t) => [...t, { id: ++turnId.current, speaker, text, time: now() }])
+  // Play a scripted exchange, one turn every ~0.9s, so the call feels live. A
+  // turn may carry a side-effect (3rd item) that fires when that turn appears —
+  // used to reveal the order basket in step with the conversation.
+  const playScript = (turns: Array<['Broker' | 'Client' | 'AI', string] | ['Broker' | 'Client' | 'AI', string, () => void]>) => {
+    const sid = sessionRef.current
+    turns.forEach((entry, i) => setTimeout(() => {
+      if (sessionRef.current !== sid) return
+      addTurn(entry[0], entry[1])
+      entry[2]?.()
+    }, i * 900))
+  }
+
+  const openClient = (c: DeskCustomer) => {
+    const sid = ++sessionRef.current
+    setVerifying(c)
+    setClient(null)
+    setOrders([])
+    setRequest('')
+    setPlaced(false)
+    setCasaMoved(0)
+    setTranscript([])
+    // Simulate caller-ID + voiceprint verification, then open the call.
+    setTimeout(() => {
+      if (sessionRef.current !== sid) return
+      setClient(c)
+      setVerifying(null)
+      addTurn('AI', `Caller verified — ${c.name}, CIF ${c.cif}. Inbound number matched the phone on file; voiceprint matched ${voiceMatchPct(c.sif)}%. Profile, portfolio & risk loaded.`)
+      playScript([
+        ['Broker', `Good morning ${c.name.split(' ')[0]} — you're through to your desk. How can I help today?`],
+      ])
+    }, 1100)
+  }
+
+  // Capture what the client asked for → transcript turn + parsed basket.
+  const capture = (text: string) => {
+    const clean = text.trim()
+    if (!clean) return
+    const parts = parseRequestMulti(clean)
+    setOrders(parts.map((p) => makeLine(p.side, p.symbol, p.qty)))
+    setPlaced(false)
+    addTurn('Client', clean)
+    if (parts.length) addTurn('AI', `Captured ${parts.length} order line${parts.length > 1 ? 's' : ''} — ${parts.map((p) => `${p.side} ${fmtInt(p.qty)} ${p.symbol}`).join(', ')}. Running market, risk & compliance checks…`)
+    else addTurn('AI', 'Heard the request but couldn’t extract an order — please add side, symbol and quantity.')
+  }
+
+  const pxOf = (sym: string) => {
+    const s = FULL_MARKET.find((x) => x.symbolShortName === sym)
+    return s ? (price(sym)?.last ?? s.lastPrice) : 0
+  }
+
+  // Start a demo call: verify a client (default to a VIP if none open), clear the
+  // desk and seed the transcript — so a demo runs end-to-end without the CIF box.
+  const startDemoCall = (): DeskCustomer => {
+    const c = client ?? DESK_CUSTOMERS.find((x) => x.vip) ?? DESK_CUSTOMERS[0]
+    sessionRef.current++
+    setClient(c)
+    setVerifying(null)
+    setOrders([]); setRequest(''); setPlaced(false); setCasaMoved(0)
+    turnId.current += 1
+    setTranscript([{ id: turnId.current, speaker: 'AI', text: `Caller verified — ${c.name}, CIF ${c.cif}. Caller‑ID + voiceprint matched. Profile, portfolio & risk loaded.`, time: now() }])
+    return c
+  }
+
+  // Demo A — a rebalance the client can comfortably afford (buys + two sells).
+  const dictateFunded = () => {
+    const c = startDemoCall()
+    const buyable = c.usualStocks.slice(0, 3)
+    const budget = c.cash * 0.55
+    const parts = buyable.map((sym) => makeLine('buy', sym, Math.max(1000, Math.round((budget / buyable.length / (pxOf(sym) || 1)) / 1000) * 1000)))
+    // Trim ~40% of up to two holdings — excluding anything we're buying.
+    const sells = c.holdings.filter((h) => (h.available ?? 0) > 0 && !buyable.includes(h.symbol)).slice(0, 2)
+    sells.forEach((h) => parts.push(makeLine('sell', h.symbol, Math.min(h.available, Math.max(1000, Math.round((h.available * 0.4) / 1000) * 1000)))))
+    const requestText = parts.map((p) => `${p.side} ${fmtInt(p.qty)} ${p.symbol}`).join(', ')
+    const totalBuy = parts.filter((p) => p.side === 'buy').reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
+    const totalSell = parts.filter((p) => p.side === 'sell').reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
+    const first = c.name.split(' ')[0]
+    const sellNames = sells.map((s) => s.symbol).join(' and ')
+    playScript([
+      ['Broker', `Good morning ${first} — you're through to your desk. How can I help today?`],
+      ['Client', `Morning. I'd like to rebalance today — pick up ${buyable.join(', ')}${sells.length ? `, and trim my ${sellNames}` : ''}.`],
+      ['Broker', `Happy to help. So ${buyable.length} buys${sells.length ? ` and ${sells.length} sells` : ''} — let me build the basket and check it.`],
+      ['AI', `Captured ${parts.length} lines (${buyable.length} buys, ${sells.length} sells) — net ${fmtMoney(totalBuy - totalSell)} within ${fmtMoney(c.cash)} available. Fully funded, all clear.`, () => { setOrders(parts); setRequest(requestText) }],
+      ['Broker', `You're all set — the sells help fund the buys and everything checks out. I'll place it now.`],
+    ])
+  }
+
+  // Demo B — a basket that exceeds available cash (AI flags it, needs CASA).
+  const dictateShort = () => {
+    const c = startDemoCall()
+    const buys = c.usualStocks.slice(0, 3)
+    const target = c.cash + c.casaBalance * 0.4 // over available cash, coverable by CASA
+    const parts = buys.map((sym) => makeLine('buy', sym, Math.max(1000, Math.round((target / buys.length / (pxOf(sym) || 1)) / 1000) * 1000)))
+    const requestText = parts.map((p) => `${p.side} ${fmtInt(p.qty)} ${p.symbol}`).join(', ')
+    const total = parts.reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
+    const short = Math.max(0, total - c.cash)
+    const first = c.name.split(' ')[0]
+    playScript([
+      ['Broker', `Good morning ${first} — how can I help today?`],
+      ['Client', `I'd like to build a larger position across ${buys.join(', ')} today.`],
+      ['Broker', `Of course. Let me size that up and run the checks.`],
+      ['AI', `Buying power check — the basket needs about ${fmtMoney(total)} but only ${fmtMoney(c.cash)} is available. Short ${fmtMoney(short)}.`, () => { setOrders(parts); setRequest(requestText) }],
+      ['Broker', `${first}, you're a little short on settled cash for this — about ${fmtMoney(short)}. Would you like me to move that across from your CASA account to cover it?`],
+      ['Client', `Yes, that's fine — please move it from my CASA.`],
+      ['Broker', `Great — I'll move it now and then place the basket.`],
+    ])
+  }
+  const analyse = () => capture(request)
+
+  // Broker moves the shortfall from the client's CASA (after the client agrees).
+  const moveFromCasa = () => {
+    if (!review || review.short <= 0 || !client) return
+    const amt = Math.min(review.short, review.casaBalance)
+    if (amt <= 0) return
+    setCasaMoved((m) => m + amt)
+    addTurn('Broker', `Moving ${fmtMoney(amt)} from your CASA (${client.casa}) into the trading account.`)
+    addTurn('AI', `${fmtMoney(amt)} moved from CASA — the basket is now fully funded and clear to place.`)
+  }
+
+  // Broker places the basket → natural confirmation exchange.
+  const placeOrder = () => {
+    if (!review || review.blocked || orders.length === 0 || !client) return
+    setPlaced(true)
+    const first = client.name.split(' ')[0]
+    playScript([
+      ['Broker', `All checks passed — I've placed and executed the order: ${review.buys} buy${review.buys === 1 ? '' : 's'}${review.sells ? ` and ${review.sells} sell${review.sells === 1 ? '' : 's'}` : ''}, net ${fmtMoney(review.netCash)}. That's done.`],
+      ['Client', `Excellent — thank you for handling all of that at once.`],
+      ['Broker', `My pleasure, ${first}. Anything else today?`],
+      ['Client', `No, that's everything for now. Thanks again.`],
+      ['Broker', `Anytime — have a great day.`],
+      ['AI', `${orders.length} orders executed and logged to CRM.`],
+    ])
+  }
+
+  // Resizable transcript column — drag its left edge to widen it.
+  const [transcriptW, setTranscriptW] = useState(320)
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null)
+  const beginResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    resizeRef.current = { startX: e.clientX, startW: transcriptW }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const ctx = resizeRef.current
+    if (!ctx) return
+    setTranscriptW(Math.max(280, Math.min(760, ctx.startW + (ctx.startX - e.clientX))))
+  }
+  const endResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    resizeRef.current = null
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
+
+  // Temporary: clear the whole desk to start a fresh call.
+  const reset = () => {
+    sessionRef.current++
+    setClient(null)
+    setVerifying(null)
+    setRequest('')
+    setOrders([])
+    setPlaced(false)
+    setCasaMoved(0)
+    setTranscript([])
+  }
+
+  // ── AI review of the whole basket ──────────────────────────────────────────
+  const review = useMemo(() => {
+    if (!client || orders.length === 0) return null
+    const lines = orders.map((o) => {
+      const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
+      const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
+      const value = last * o.qty
+      const holding = client.holdings.find((h) => h.symbol === o.symbol)
+      const issues: { tone: CheckTone; text: string }[] = []
+      if (!s) issues.push({ tone: 'block', text: 'unknown symbol' })
+      else {
+        if (s.remarks === 'suspended') issues.push({ tone: 'block', text: 'suspended — trading blocked' })
+        if (o.side === 'sell' && (holding?.available ?? 0) < o.qty) issues.push({ tone: 'block', text: `only ${fmtInt(holding?.available ?? 0)} sellable` })
+        if (o.side === 'buy' && client.risk === 'Conservative' && Math.abs(s.changePct) > 2) issues.push({ tone: 'warn', text: `volatile ${fmtPct(s.changePct)} — high for a Conservative mandate` })
+      }
+      return { o, s, last, value, issues }
+    })
+    const totalBuy = lines.filter((l) => l.o.side === 'buy').reduce((a, l) => a + l.value, 0)
+    const totalSell = lines.filter((l) => l.o.side === 'sell').reduce((a, l) => a + l.value, 0)
+    const netCash = totalBuy - totalSell
+    const cash = client.cash + casaMoved // available after any CASA top-up
+    const casaBalance = Math.max(0, client.casaBalance - casaMoved)
+    const short = Math.max(0, netCash - cash)
+    const buys = lines.filter((l) => l.o.side === 'buy').length
+    const sells = lines.filter((l) => l.o.side === 'sell').length
+    // A funding shortfall blocks placement until it's covered (e.g. from CASA).
+    const blocked = lines.some((l) => l.issues.some((i) => i.tone === 'block')) || short > 0
+    return { lines, totalBuy, totalSell, netCash, cash, casaBalance, short, buys, sells, blocked }
+  }, [client, orders, price, casaMoved])
+
+  const canPlace = !!review && !review.blocked && !placed && orders.length > 0
+
+  // Layout: wide → 3-column (like the window); narrow → stacked. Driven by the
+  // real width so a widened docked board switches to the window design.
+  const [bodyRef, bodyW] = useWidth<HTMLDivElement>()
+  const wide = bodyW > 0 ? bodyW >= 820 : !compact
+  const allIdeas = client ? pitchIdeas(client, price) : []
+  // "Stronger alternative" only makes sense once there's a buy/sell to compare
+  // against; take-profit / momentum come from holdings, so show them from open.
+  const ideas = orders.length > 0 ? allIdeas : allIdeas.filter((i) => i.tone !== 'switch')
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-page">
+      {/* Toolbar */}
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-dark bg-[#141619] px-3">
+        <span className="flex items-center gap-2 text-[13px] font-semibold text-content">
+          <span className="flex items-center gap-1 rounded bg-[rgba(0,98,255,0.16)] px-1.5 py-0.5 text-[#9cc0ff]"><Sparkle /> AI</span>
+          Order Placement · AI
+        </span>
+        <div className="flex items-center gap-2">
+          <button onClick={reset} title="Clear the desk and start a fresh call (temporary)" className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg> Reset
+          </button>
+          {onDock ? (
+            <button onClick={handleDock} className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 10l-5 5 5 5" /><path d="M4 15h11a5 5 0 0 0 5-5V4" /></svg> Dock to main
+            </button>
+          ) : onOpenWindow ? (
+            <button onClick={onOpenWindow} className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4h6v6" /><path d="M20 4l-8 8" /><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg> Open in window
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div ref={bodyRef} className={`flex min-h-0 flex-1 gap-3 p-3 ${wide ? '' : 'flex-col'}`}>
+        {/* Client + order flow. Narrow: scroll together above the pinned transcript. */}
+        <div className={wide ? 'contents' : 'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'}>
+        <ClientColumn client={client} onOpen={openClient} verifying={verifying} onUseIdea={(t) => setRequest(t)} narrow={!wide} showAdvisory={wide} ideas={ideas} />
+
+        {/* AI order flow (center) — below the client column when narrow */}
+        <div className={`flex min-w-0 flex-col gap-3 ${wide ? 'min-h-0 flex-1 overflow-y-auto' : 'order-2'}`}>
+          {/* Capture request */}
+          <div className="rounded-xl border border-border-dark bg-surface p-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-subtle">
+              <Sparkle className="text-[#5b9bff]" /> Client request
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={request}
+                onChange={(e) => setRequest(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') analyse() }}
+                disabled={!client}
+                placeholder={client ? "e.g. “buy 100k Emaar, 50k DIB and sell 30k SALIK”" : 'Verify a client first…'}
+                className="h-9 min-w-0 flex-1 rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action disabled:opacity-50"
+              />
+              <button onClick={analyse} disabled={!client || !request.trim()} className="h-9 rounded-md px-3 text-[12px] font-semibold text-white disabled:opacity-40" style={{ background: BLUE }}>Analyse</button>
+            </div>
+            {/* Two demo calls: one funded, one that needs a CASA top-up. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="text-content-subtle">Demo calls:</span>
+              <button onClick={dictateFunded} disabled={!client} title="Simulate a call the client can afford" className="flex items-center gap-1.5 rounded-md border border-[rgba(47,208,122,0.4)] bg-bid-surface px-2 py-1 font-medium text-up hover:bg-[rgba(36,161,72,0.2)] disabled:opacity-40">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                Funded — client can afford it
+              </button>
+              <button onClick={dictateShort} disabled={!client} title="Simulate a call that needs a CASA top-up" className="flex items-center gap-1.5 rounded-md border border-[rgba(255,170,0,0.4)] bg-[rgba(255,170,0,0.1)] px-2 py-1 font-medium text-warning hover:bg-[rgba(255,170,0,0.18)] disabled:opacity-40">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                Short funds — needs CASA
+              </button>
+            </div>
+            {orders.length > 0 && (
+              <div className="mt-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Order basket · {orders.length} line{orders.length > 1 ? 's' : ''}</span>
+                  <button onClick={addLine} className="rounded border border-border-dark bg-[#1f2226] px-2 py-0.5 text-[10px] font-medium text-content hover:bg-[#262a2f]">＋ Add line</button>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {orders.map((o) => {
+                    const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
+                    const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
+                    return (
+                      <li key={o.id} className="flex items-center gap-2">
+                        <select
+                          value={o.side}
+                          onChange={(e) => updateLine(o.id, { side: e.target.value as Side })}
+                          className={`h-8 shrink-0 rounded border px-1 text-[11px] font-semibold uppercase outline-none ${o.side === 'buy' ? 'border-[rgba(0,98,255,0.4)] bg-[rgba(0,98,255,0.12)] text-[#9cc0ff]' : 'border-[rgba(255,107,114,0.4)] bg-offer-surface text-down'}`}
+                        >
+                          <option value="buy" className="bg-surface text-content">Buy</option>
+                          <option value="sell" className="bg-surface text-content">Sell</option>
+                        </select>
+                        <select value={o.symbol} onChange={(e) => updateLine(o.id, { symbol: e.target.value })} className="h-8 min-w-0 flex-1 rounded border border-border-dark bg-[#15171a] px-2 text-[12px] text-content outline-none focus:border-action">
+                          {FULL_MARKET.map((x) => <option key={x.symbolShortName} value={x.symbolShortName} className="bg-surface">{x.symbolShortName}</option>)}
+                        </select>
+                        <input type="number" value={o.qty} onChange={(e) => updateLine(o.id, { qty: Math.max(0, +e.target.value) })} className="h-8 w-24 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-action" />
+                        <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-content-muted">{fmtMoney(last * o.qty)}</span>
+                        <button onClick={() => removeLine(o.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove line" aria-label="Remove line">✕</button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* Advisory sits between the request and review in the narrow layout. */}
+          {!wide && client && <AdvisoryCard ideas={ideas} onUse={setRequest} />}
+
+          {/* AI review — whole basket */}
+          {review && client && (
+            <div className="rounded-xl border border-border-dark bg-surface">
+              <div className="flex items-center justify-between border-b border-border-dark px-3 py-2">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content"><Sparkle className="text-[#5b9bff]" /> AI review &amp; checks</span>
+                <span className="text-[11px] text-content-muted">{review.buys} buy{review.buys === 1 ? '' : 's'} · {review.sells} sell{review.sells === 1 ? '' : 's'}</span>
+              </div>
+
+              {/* Aggregate across the basket */}
+              <div className="grid grid-cols-4 gap-3 border-b border-border-dark px-3 py-2.5">
+                <Field label="Total buys" value={fmtMoney(review.totalBuy)} tone="text-[#9cc0ff]" />
+                <Field label="Total sells" value={fmtMoney(review.totalSell)} tone="text-down" />
+                <Field label="Net cash" value={fmtMoney(review.netCash)} tone={review.short > 0 ? 'text-warning' : 'text-content'} />
+                <Field label="Available" value={fmtMoney(review.cash)} tone={casaMoved > 0 ? 'text-up' : 'text-content'} />
+              </div>
+
+              {/* Per-line */}
+              <ul className="divide-y divide-border-dark">
+                {review.lines.map((l) => {
+                  const block = l.issues.some((i) => i.tone === 'block')
+                  const warn = l.issues.some((i) => i.tone === 'warn')
+                  return (
+                    <li key={l.o.id} className="flex items-start gap-2.5 px-3 py-2">
+                      <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${l.o.side === 'buy' ? 'bg-[rgba(0,98,255,0.16)] text-[#9cc0ff]' : 'bg-offer-surface text-down'}`}>{l.o.side}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                          <span className="text-[12px] font-semibold text-content">{l.o.symbol}</span>
+                          <span className="rounded bg-[#15171a] px-1.5 py-0.5 text-[14px] font-bold tabular-nums text-content">{fmtInt(l.o.qty)}<span className="ml-0.5 text-[9px] font-medium text-content-muted">sh</span></span>
+                          <span className="text-[11px] text-content-subtle">@</span>
+                          <span className="rounded bg-[rgba(0,98,255,0.14)] px-1.5 py-0.5 text-[14px] font-bold tabular-nums text-[#9cc0ff]">{fmtPrice(l.last)}</span>
+                          <span className="text-[11px] text-content-subtle">=</span>
+                          <span className="text-[12px] font-semibold tabular-nums text-content">{fmtMoney(l.value)}</span>
+                        </div>
+                        {l.issues.length > 0 && <div className={`text-[11px] ${block ? 'text-down' : warn ? 'text-warning' : 'text-content-muted'}`}>{l.issues.map((i) => i.text).join(' · ')}</div>}
+                      </div>
+                      <span className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-[#0b0c0d] ${block ? 'bg-down' : warn ? 'bg-warning' : 'bg-up'}`}>{block ? '✕' : warn ? '!' : '✓'}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {/* Basket-level checks */}
+              <ul className="divide-y divide-border-dark border-t border-border-dark">
+                <CheckRow
+                  tone={review.short > 0 ? 'warn' : 'pass'}
+                  title="Buying power"
+                  detail={review.short > 0
+                    ? `Not enough cash — the basket needs ${fmtMoney(review.netCash)} but only ${fmtMoney(review.cash)} is available (short ${fmtMoney(review.short)}). CASA ${client.casa} holds ${fmtMoney(review.casaBalance)}. Ask the client to approve moving the difference.`
+                    : `Covered — net ${fmtMoney(review.netCash)} within ${fmtMoney(review.cash)} available${casaMoved > 0 ? ` (incl. ${fmtMoney(casaMoved)} moved from CASA)` : ''}.`}
+                  action={review.short > 0 ? <button onClick={moveFromCasa} className="shrink-0 self-center rounded px-2.5 py-1 text-[11px] font-semibold text-white" style={{ background: BLUE }}>Move {fmtMoney(review.short)} from CASA</button> : undefined}
+                />
+                <CheckRow tone={client.kyc === 'Valid' ? 'pass' : 'warn'} title="KYC & mandate" detail={client.kyc === 'Valid' ? 'KYC valid; basket within mandate.' : 'Client KYC review due before large orders.'} />
+                <CheckRow tone={review.blocked ? 'block' : 'pass'} title="Compliance" detail={review.blocked ? 'One or more lines are blocked — fix them before placing.' : 'All lines clear of restricted / watch lists.'} />
+              </ul>
+
+              <div className="flex items-center justify-between gap-3 border-t border-border-dark px-3 py-2.5">
+                <span className="text-[11px] text-content-muted">{review.blocked ? (review.short > 0 ? 'Not enough cash — move funds from CASA (with the client’s approval) to place.' : 'Resolve the blocking line before placing.') : 'Reviewed — confirm with the client, then place the basket.'}</span>
+                <button onClick={placeOrder} disabled={!canPlace} className="rounded-md px-4 py-1.5 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" style={{ background: review.blocked ? '#5b6472' : BLUE }}>
+                  Place {orders.length} order{orders.length > 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Post-trade */}
+          {placed && review && client && (
+            <div className="rounded-xl border border-[rgba(47,208,122,0.4)] bg-[rgba(36,161,72,0.08)] p-3">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-up"><span className="grid size-5 place-items-center rounded-full bg-up text-[11px] text-[#0b0c0d]">✓</span> Confirmation</div>
+              <p className="mt-2 text-[12px] leading-relaxed text-content">
+                Executed for <span className="font-semibold">{client.name}</span> (CIF {client.cif}).
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-end gap-x-8 gap-y-2">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">{review.buys} Buy{review.buys === 1 ? '' : 's'}</div>
+                  <div className="text-[17px] font-bold tabular-nums text-[#5b9bff]">{fmtMoney(review.totalBuy)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">{review.sells} Sell{review.sells === 1 ? '' : 's'}</div>
+                  <div className="text-[17px] font-bold tabular-nums text-down">{fmtMoney(review.totalSell)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">Net cash</div>
+                  <div className="text-[17px] font-bold tabular-nums text-content">{fmtMoney(review.netCash)}</div>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-content-muted"><Sparkle className="text-[#5b9bff]" /> Logged to CRM &amp; audit trail automatically.</div>
+            </div>
+          )}
+        </div>
+
+        </div>{/* end client + order-flow wrapper */}
+
+        {/* Live call transcript — right column (resizable) or pinned to the bottom when docked. */}
+        {(client || verifying || transcript.length > 0) && (
+          <div
+            className={`relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-border-dark bg-surface ${wide ? '' : 'h-[220px] w-full'}`}
+            style={wide ? { width: transcriptW } : undefined}
+          >
+            {wide && (
+              <div
+                onPointerDown={beginResize}
+                onPointerMove={moveResize}
+                onPointerUp={endResize}
+                onLostPointerCapture={endResize}
+                title="Drag to widen the transcript"
+                className="absolute bottom-0 left-0 top-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-action/60"
+              />
+            )}
+            <div className="flex items-center justify-between border-b border-border-dark px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content"><Sparkle className="text-[#5b9bff]" /> Live call transcript</span>
+              <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-down">
+                <span className="inline-block size-1.5 animate-pulse rounded-full bg-down shadow-[0_0_5px_#ff6b72]" /> Live
+              </span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {transcript.length === 0 ? (
+                <div className="py-4 text-center text-[11px] text-content-muted">Connecting call…</div>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {transcript.map((t) => (
+                    <li key={t.id} className={t.speaker === 'AI' ? 'flex justify-center' : t.speaker === 'Broker' ? 'flex justify-end' : 'flex justify-start'}>
+                      {t.speaker === 'AI' ? (
+                        <span className="flex items-center gap-1.5 rounded-full bg-[rgba(0,98,255,0.1)] px-2.5 py-1 text-[11px] text-[#9cc0ff]"><Sparkle /> {t.text}</span>
+                      ) : (
+                        <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-[12px] ${t.speaker === 'Broker' ? 'bg-[rgba(0,98,255,0.16)] text-content' : 'bg-[#1f2226] text-content'}`}>
+                          <div className="mb-0.5 flex items-center gap-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
+                            <span className="font-semibold">{t.speaker}</span><span className="tabular-nums normal-case">{t.time}</span>
+                          </div>
+                          {t.text}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

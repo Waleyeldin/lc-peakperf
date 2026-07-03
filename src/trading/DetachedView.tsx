@@ -5,6 +5,7 @@ import MarketIndices from './components/MarketIndices'
 import FullMarket from './components/FullMarket'
 import RightPanel from './components/RightPanel'
 import BrokerDesk from './components/BrokerDesk'
+import OrderPlacementAI from './components/OrderPlacementAI'
 import BuySellDrawer from './components/BuySellDrawer'
 import { dockPanelToMain } from './popout'
 import { FULL_MARKET_COLUMNS } from './data'
@@ -49,6 +50,8 @@ export default function DetachedView({ id }: { id: string }) {
       return <TradeHost render={(onTrade) => <RightPanel onTrade={onTrade} />} />
     case 'broker-flow':
       return <div className="h-screen w-screen bg-page"><BrokerDesk onDock={() => void dockPanelToMain(['broker-flow'])} /></div>
+    case 'order-ai':
+      return <div className="h-screen w-screen bg-page"><OrderPlacementAI onDock={() => void dockPanelToMain(['order-ai'])} /></div>
     default:
       return <DetachedPanel id={id} />
   }

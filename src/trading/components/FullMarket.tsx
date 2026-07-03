@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import DataTable, { type Column } from './DataTable'
 import { Panel, Select, Button, Badge, PopOutButton } from './ui'
@@ -24,6 +24,8 @@ interface FullMarketProps {
   onOpenColumns: () => void
   onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void
   onPopOut?: () => void
+  /** Market name to filter to (from the active tab); follows tab changes. */
+  defaultMarket?: string
 }
 
 /** Sign-based colour class for change / pct values. */
@@ -39,9 +41,11 @@ function signClass(n: number): string {
  * columns are driven dynamically by `visibleColumns` against the column
  * registry, plus a trailing per-row Buy/Sell action cell.
  */
-export default function FullMarket({ visibleColumns, onOpenColumns, onTrade, onPopOut }: FullMarketProps) {
+export default function FullMarket({ visibleColumns, onOpenColumns, onTrade, onPopOut, defaultMarket }: FullMarketProps) {
   const [search, setSearch] = useState('')
-  const [market, setMarket] = useState(MARKET_OPTIONS[0])
+  const [market, setMarket] = useState(defaultMarket ?? MARKET_OPTIONS[0])
+  // Follow the active tab's market; the user can still change it locally.
+  useEffect(() => { if (defaultMarket) setMarket(defaultMarket) }, [defaultMarket])
   const [watchlist, setWatchlist] = useState(WATCHLIST_OPTIONS[0])
   const [sector, setSector] = useState(SECTOR_OPTIONS[0])
   const [session, setSession] = useState(TRADING_SESSION_OPTIONS[0])

@@ -49,7 +49,7 @@ export function Panel({
           ) : (
             title
           )}
-          {actions && <div className="flex items-center gap-1.5">{actions}</div>}
+          {actions && <div className="relative z-20 flex items-center gap-1.5">{actions}</div>}
         </header>
       )}
       <div className={`${noPadding ? '' : 'p-4'} min-h-0 flex-1 ${bodyClassName}`}>{children}</div>

@@ -1,5 +1,36 @@
 # Changelog
 
+## v3.0.0
+
+### Rebrand & sign-in
+- **FAB Trade** — the terminal is rebranded from "TRADENET X" across the app.
+- **Sign-in screen** — a branded login (Broker ID + password) on launch, with **Sign out** in the user menu. Prototype: any credentials continue.
+
+### Order Placement · AI (new)
+An AI-assisted sibling of Order Placement (nav **Trading › Process**, hotkey **⇧F5**, or its own window). The broker always confirms and executes; AI removes the busywork.
+- **Caller verification** — matches the inbound number to the CIF and checks a voiceprint, shown live.
+- **Live call transcript** — a natural broker/client conversation that plays out turn-by-turn; the order basket and review appear in step with it.
+- **Multi-order baskets** — parse "buy 100k Emaar, 50k DIB and sell 30k SALIK" into editable buy/sell lines; add/remove lines by hand.
+- **AI review & checks** — market context, an order-type recommendation, portfolio impact, risk alerts, compliance, and **buying power across the whole basket** (net of sells). Blocking issues disable placement.
+- **CASA top-up** — when short on cash, the broker asks the client and moves the shortfall from CASA to clear it.
+- **What to pitch** — live advisory: take-profit / momentum from the client's holdings, plus a stronger alternative once there's a request.
+- **Two demo calls** — a fully-funded rebalance (buys + sells) and a short-funds call that needs CASA.
+- **Responsive** — a 3-column window layout that switches to a stacked design when docked narrow (and back when widened).
+
+### Order Placement (classic)
+- Opens **blank**; a **CIF autocomplete** over an expanded book of **12 demo clients**.
+- **Browser-style client tabs** — drag to reorder, middle-click to close, and **pin** clients to keep them.
+- **VIP toggle** per client, a **Market Watch** show/hide, and clearer wording ("Add line", "Enter CIF…").
+
+### Graph terminal
+- **Hide any panel** (e.g. Indices, Market Breadth) and bring hidden ones back from **"Add panel"** in the header.
+- **Drag panels by the title bar** to reorder — reliable, with panel controls shown as buttons.
+- Interactive, responsive price chart with an OHLC crosshair; gap-free default layout.
+
+### Markets & app
+- **DFM (real-time) / ADX (simulated)** market selector and **market-bound tabs**; the **Detailed view now follows the active tab's market** too.
+- **Clean custom scrollbars**, wider Order Placement windows, docked-board resize, and an in-app **"Check for updates"**.
+
 ## v2.5.0
 
 ### Graph view (Securities Terminal)

@@ -63,14 +63,15 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'LC PeakPerf v__VERSION__'
           releaseBody: |
-            **LC PeakPerf v__VERSION__**
+            **FAB Trade v__VERSION__** (formerly LC PeakPerf / TRADENET X)
 
             Highlights:
-            - Graph view: news prioritised + contextual + clickable; responsive, interactive price chart; gap-free layout.
-            - Markets: DFM (real-time) / ADX (simulated) selector and market-bound tabs.
-            - Workspace board: full-size single-frame panels, resizable dock, dock-conflict prompt.
-            - Order Placement (was "Broker Flow"): CIF autocomplete, browser-style tabs with pinning, VIP toggle.
-            - App: clean scrollbars and an in-app "Check for updates".
+            - Rebrand to **FAB Trade** + a branded **sign-in** screen.
+            - **Order Placement · AI** — caller verification, live call transcript, multi-order baskets, AI risk/compliance/buying-power checks, CASA top-up, and "what to pitch".
+            - **Order Placement** — CIF autocomplete over 12 clients, browser-style client tabs with pinning, VIP toggle.
+            - **Graph terminal** — hide/restore panels, drag panels by the title bar.
+            - **Markets** — DFM (real-time) / ADX (simulated) across both Graph and Detailed views.
+            - App — clean scrollbars, wider windows, in-app "Check for updates".
 
             See CHANGELOG.md for the full notes. Download the installer for your platform below.
           releaseDraft: true

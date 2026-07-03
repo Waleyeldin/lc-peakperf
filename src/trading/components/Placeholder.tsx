@@ -13,7 +13,7 @@ export default function Placeholder({ title, group }: { title: string; group?: s
       <div className="text-[17px] font-semibold text-content">{title}</div>
       <p className="max-w-md text-[13px] leading-relaxed text-content-muted">
         {group ? <span className="text-content-muted">{group} · </span> : null}
-        This module is part of the TRADENET&nbsp;X redesign and will surface live{' '}
+        This module is part of the FAB&nbsp;Trade redesign and will surface live{' '}
         {title.toLowerCase()} data here, using the same tables, filters and saved views as the rest of the dashboard.
       </p>
       <Badge tone="info">Planned module</Badge>

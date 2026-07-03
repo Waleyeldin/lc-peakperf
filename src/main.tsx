@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import TradingPlatform from './trading/TradingPlatform.tsx'
+import Login from './trading/Login.tsx'
 import DetachedView from './trading/DetachedView.tsx'
 import BoardWindow from './trading/BoardWindow.tsx'
 import { checkForUpdates } from './updater.ts'
@@ -22,7 +23,12 @@ function Home() {
   if (board) return <BoardWindow initial={board.split(',').filter(Boolean)} />
   const detach = params.get('detach')
   if (detach) return <DetachedView id={detach} />
-  return isTauri ? <Navigate to="/trading?tab=dfm" replace /> : <App />
+  // Desktop app boots into the sign-in screen (unless already signed in this session).
+  if (isTauri) {
+    const authed = sessionStorage.getItem('lc-auth') === '1'
+    return <Navigate to={authed ? '/trading?tab=dfm' : '/login'} replace />
+  }
+  return <App />
 }
 
 // Quietly check GitHub for a newer signed build once the app has booted.
@@ -36,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/trading/*" element={<TradingPlatform />} />
       </Routes>
     </BrowserRouter>

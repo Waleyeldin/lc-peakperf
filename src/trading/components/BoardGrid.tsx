@@ -8,6 +8,7 @@ import MarketIndices from './MarketIndices'
 import FullMarket from './FullMarket'
 import RightPanel from './RightPanel'
 import BrokerDesk from './BrokerDesk'
+import OrderPlacementAI from './OrderPlacementAI'
 import BuySellDrawer from './BuySellDrawer'
 import { GraphPanelBody, PANEL_TITLES } from './FabTerminal'
 import { FULL_MARKET_COLUMNS } from '../data'
@@ -30,6 +31,7 @@ export const BOARD_TITLES: Record<string, string> = {
   'd-market': 'Market Table',
   'd-right': 'Watchlist',
   'broker-flow': 'Order Placement',
+  'order-ai': 'Order Placement · AI',
 }
 
 /** Wraps a trading panel so its Buy/Sell open a ticket inside this window. */
@@ -49,6 +51,7 @@ function panelBody(id: string): ReactNode {
     case 'd-market': return <TradeBody render={(onTrade) => <FullMarket visibleColumns={defaultCols} onOpenColumns={noop} onTrade={onTrade} />} />
     case 'd-right': return <TradeBody render={(onTrade) => <RightPanel onTrade={onTrade} />} />
     case 'broker-flow': return <BrokerDesk compact />
+    case 'order-ai': return <OrderPlacementAI compact />
 
     // Any other id is a Graph-look panel (indices, movers, news, …); render it
     // with FabTerminal's standalone panel body so both looks share the board.
