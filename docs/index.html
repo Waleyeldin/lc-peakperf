@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download FAB Trade for Mac</title>
+<style>
+  :root {
+    --ink: #070b16;
+    --ink-2: #0d1526;
+    --line: #223154;
+    --navy: #0b1b4d;
+    --blue: #5b9bff;
+    --blue-2: #9cc0ff;
+    --action: #0062ff;
+    --action-hover: #1d72ff;
+    --text: #eaf0fb;
+    --muted: #9aa7c2;
+    --subtle: #64728f;
+    --good: #2fd07a;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    background:
+      radial-gradient(1200px 620px at 50% -10%, rgba(0,98,255,0.20), transparent 60%),
+      linear-gradient(180deg, #081124 0%, var(--ink) 55%);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  .grid { position: absolute; inset: 0; opacity: 0.5; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(91,155,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91,155,255,0.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    -webkit-mask-image: radial-gradient(700px 480px at 50% 6%, #000 40%, transparent 75%);
+            mask-image: radial-gradient(700px 480px at 50% 6%, #000 40%, transparent 75%);
+  }
+  .card {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    background: linear-gradient(180deg, rgba(20,30,54,0.92), rgba(13,21,38,0.92));
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 34px 34px 26px;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark {
+    width: 46px; height: 46px; border-radius: 13px;
+    display: grid; place-items: center;
+    background: linear-gradient(160deg, #12327e, var(--navy));
+    border: 1px solid rgba(91,155,255,0.35);
+    color: #fff; font-weight: 800; font-size: 16px; letter-spacing: 0.5px;
+  }
+  .brand-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-name span { color: var(--blue); }
+  .eyebrow { margin: 22px 0 0; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--subtle); }
+  h1 { margin: 7px 0 0; font-size: 30px; line-height: 1.1; font-weight: 750; letter-spacing: -0.02em; text-wrap: balance; }
+  .sub { margin: 10px 0 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+
+  .downloads { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+  .btn {
+    display: flex; flex-direction: column; gap: 2px;
+    text-decoration: none; color: inherit;
+    border-radius: 13px; padding: 14px 18px;
+    border: 1px solid transparent;
+    transition: transform 0.06s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--action); border-color: rgba(255,255,255,0.12); box-shadow: 0 10px 26px -10px rgba(0,98,255,0.7); }
+  .btn-primary:hover { background: var(--action-hover); }
+  .btn-ghost { background: rgba(255,255,255,0.03); border-color: var(--line); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.06); border-color: #2c3f68; }
+  .btn-title { display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 650; }
+  .btn-title svg { flex: none; }
+  .btn-sub { font-size: 12px; color: rgba(255,255,255,0.72); padding-left: 27px; }
+  .btn-ghost .btn-sub { color: var(--subtle); }
+  .btn-primary .btn-sub { color: rgba(255,255,255,0.85); }
+
+  .which { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .which summary { cursor: pointer; font-size: 13px; color: var(--blue-2); list-style: none; display: flex; align-items: center; gap: 7px; }
+  .which summary::-webkit-details-marker { display: none; }
+  .which summary::before { content: "?"; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid currentColor; font-size: 11px; font-weight: 700; }
+  .which p { margin: 10px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .which b { color: var(--text); font-weight: 600; }
+
+  .steps { margin-top: 26px; }
+  .steps h2 { margin: 0 0 12px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--subtle); font-weight: 600; }
+  ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 11px; counter-reset: s; }
+  ol li { position: relative; padding-left: 40px; counter-increment: s; font-size: 14px; line-height: 1.5; color: var(--text); }
+  ol li::before {
+    content: counter(s); position: absolute; left: 0; top: -1px;
+    width: 26px; height: 26px; border-radius: 8px;
+    display: grid; place-items: center;
+    background: rgba(91,155,255,0.12); color: var(--blue);
+    border: 1px solid rgba(91,155,255,0.28);
+    font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  ol li span { color: var(--muted); }
+
+  .note { margin-top: 20px; display: flex; gap: 11px; padding: 13px 15px; border-radius: 12px; background: rgba(240,185,59,0.08); border: 1px solid rgba(240,185,59,0.28); font-size: 13px; line-height: 1.55; color: #f0d59a; }
+  .note svg { flex: none; margin-top: 1px; }
+  .note b { color: #ffe6b0; font-weight: 600; }
+
+  .footer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--subtle); }
+  .footer .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px rgba(47,208,122,0.8); flex: none; }
+
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
+  @media (max-width: 420px) { .card { padding: 26px 22px 22px; } h1 { font-size: 25px; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="grid"></div>
+  <main class="card">
+    <div class="brand">
+      <div class="mark">FT</div>
+      <div class="brand-name">FAB <span>Trade</span></div>
+    </div>
+
+    <p class="eyebrow">macOS · Version 3.1.3</p>
+    <h1>Download FAB&nbsp;Trade for Mac</h1>
+    <p class="sub">The broker terminal, ready to install. Pick your Mac type below, open the file, and you're set — it takes about a minute.</p>
+
+    <div class="downloads">
+      <a class="btn btn-primary" href="https://github.com/Waleyeldin/lc-peakperf/releases/download/v3.1.3/FAB.Trade_3.1.3_aarch64.dmg">
+        <span class="btn-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.7 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7 2-1.1 2.8-2.2c.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.9zM14.4 5.9c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.8 1 .1 2-.5 2.7-1.2z"/></svg>
+          Download for Mac
+        </span>
+        <span class="btn-sub">Apple Silicon — M1 / M2 / M3 / M4 (recommended)</span>
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/Waleyeldin/lc-peakperf/releases/download/v3.1.3/FAB.Trade_3.1.3_x64.dmg">
+        <span class="btn-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.7 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7 2-1.1 2.8-2.2c.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-1-2.5-3.9zM14.4 5.9c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.8 1 .1 2-.5 2.7-1.2z"/></svg>
+          Download for Mac (Intel)
+        </span>
+        <span class="btn-sub">Older Intel-based Macs</span>
+      </a>
+    </div>
+
+    <details class="which">
+      <summary>Not sure which one?</summary>
+      <p>Click the <b>Apple menu</b> (top-left of the screen) → <b>About This Mac</b>. If it says <b>Apple M1/M2/M3/M4</b>, use the top button. If it says <b>Intel</b>, use the Intel button. When in doubt, try the top one first.</p>
+    </details>
+
+    <div class="steps">
+      <h2>Install in 3 steps</h2>
+      <ol>
+        <li>Open the downloaded <b>FAB Trade</b> file (the <span>.dmg</span> in your Downloads).</li>
+        <li>Drag the <b>FAB Trade</b> icon onto the <b>Applications</b> folder.</li>
+        <li>Open Applications, <b>right-click FAB Trade → Open</b>, then <b>Open</b> again.</li>
+      </ol>
+    </div>
+
+    <div class="note">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>The first time only, macOS may say the developer "can't be verified." That's expected for an internal app — just <b>right-click → Open</b> once, and it opens normally every time after.</div>
+    </div>
+
+    <div class="footer">
+      <span class="dot"></span>
+      Updates are automatic — in the app, open your profile menu (top-right) → <b>Check for updates</b>.
+    </div>
+  </main>
+</div>
+</body>
+</html>
