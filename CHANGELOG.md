@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.1.3
+
+- **Client tabs reorder reliably on macOS** — the Order Placement client tabs now drag-reorder with pointer events (matching the graph panels), instead of HTML5 drag-and-drop which is unreliable in the Mac WebView. This removes the last drag interaction that could misbehave on Mac.
+
 ## v3.1.2
 
 - **Opens full-screen on sign-in** — after you log in, the desk window maximises to fill the screen.

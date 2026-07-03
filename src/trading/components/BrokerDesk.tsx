@@ -470,6 +470,9 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
   const [activeSif, setActiveSif] = useState(() => snap?.activeSif ?? '') // which open client's tab is shown
   const [vipMap, setVipMap] = useState<Record<string, boolean>>(() => snap?.vipMap ?? {}) // manual VIP overrides, survive tab switches
   const [dragSif, setDragSif] = useState<string | null>(null) // tab being dragged to reorder
+  const dragSifRef = useRef<string | null>(null) // synchronous mirror of dragSif for the pointer handlers
+  const tabDownRef = useRef<{ sif: string; x: number } | null>(null) // pointer-down bookkeeping
+  const justDraggedRef = useRef(false) // suppress the click that follows a drag
   const [pinned, setPinned] = useState<Set<string>>(() => new Set(snap?.pinned ?? [])) // pinned tabs — kept, close-protected
   const [cif, setCif] = useState('')
   const [error, setError] = useState('')
@@ -481,9 +484,10 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
 
   // Browser-tab drag-to-reorder: live-swap the dragged tab over the hovered one.
   const reorder = (targetSif: string) => {
-    if (dragSif === null || dragSif === targetSif) return
+    const dragging = dragSifRef.current
+    if (dragging === null || dragging === targetSif) return
     setOpen((prev) => {
-      const from = prev.findIndex((c) => c.sif === dragSif)
+      const from = prev.findIndex((c) => c.sif === dragging)
       const to = prev.findIndex((c) => c.sif === targetSif)
       if (from < 0 || to < 0) return prev
       const next = prev.slice()
@@ -629,12 +633,31 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
                     key={c.sif}
                     role="tab"
                     aria-selected={active}
-                    draggable
-                    onClick={() => setActiveSif(c.sif)}
+                    data-sif={c.sif}
+                    onClick={() => { if (justDraggedRef.current) { justDraggedRef.current = false; return } setActiveSif(c.sif) }}
                     onAuxClick={(e) => { if (e.button === 1 && !isPinned(c.sif)) { e.preventDefault(); close(c.sif) } }}
-                    onDragStart={(e) => { setDragSif(c.sif); e.dataTransfer.effectAllowed = 'move' }}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; reorder(c.sif) }}
-                    onDragEnd={() => setDragSif(null)}
+                    // Pointer-based reorder (reliable in macOS WebView, unlike HTML5 drag).
+                    onPointerDown={(e) => { if (e.button === 0) tabDownRef.current = { sif: c.sif, x: e.clientX } }}
+                    onPointerMove={(e) => {
+                      const d = tabDownRef.current
+                      if (!d) return
+                      if (dragSifRef.current === null) {
+                        if (Math.abs(e.clientX - d.x) < 5) return // small threshold so a click doesn't start a drag
+                        dragSifRef.current = d.sif
+                        setDragSif(d.sif)
+                        e.currentTarget.setPointerCapture(e.pointerId)
+                      }
+                      const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest('[data-sif]')?.getAttribute('data-sif')
+                      if (over) reorder(over)
+                    }}
+                    onPointerUp={(e) => {
+                      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+                      if (dragSifRef.current !== null) justDraggedRef.current = true
+                      dragSifRef.current = null
+                      setDragSif(null)
+                      tabDownRef.current = null
+                    }}
+                    onPointerCancel={() => { dragSifRef.current = null; setDragSif(null); tabDownRef.current = null }}
                     title={`${c.name} · CIF ${c.cif}`}
                     className={`group flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 py-1.5 text-[12px] transition-opacity ${
                       dragSif === c.sif ? 'opacity-50' : ''
