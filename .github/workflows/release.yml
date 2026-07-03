@@ -61,7 +61,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'LC PeakPerf v__VERSION__'
+          releaseName: 'FAB Trade v__VERSION__'
           releaseBody: |
             **FAB Trade v__VERSION__** (formerly LC PeakPerf / TRADENET X)
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.1.0
+
+- **"FAB Trade" everywhere** — the app is now named FAB Trade at the OS level too (window title, taskbar/dock, and installer), completing the rebrand. **This is the build to install** for demos.
+- Includes the in-app updater from v3.0.1, so every later version installs with one click from inside the app.
+
 ## v3.0.1
 
 - **In-app updater** — a branded "Check for updates" dialog (user menu) that shows the current version, checks GitHub, displays the new version + notes, and **downloads, installs and relaunches inside the app** with a progress bar — replacing the native OS prompts.
