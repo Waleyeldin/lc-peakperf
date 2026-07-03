@@ -97,6 +97,39 @@ body {
 .tick-up { animation: tickUp 0.65s ease-out; border-radius: 4px; }
 .tick-down { animation: tickDown 0.65s ease-out; border-radius: 4px; }
 
+/* ── Clean custom scrollbars (replace the default OS scrollbar) ─────────── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+/* WebKit / Chromium (Tauri WebView2) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* The 2px transparent border + padding-box clip leaves a slim, floating thumb
+   with rounded ends that never touches the track edges. */
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.15s ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.32);
+}
+*::-webkit-scrollbar-thumb:active {
+  background-color: rgba(255, 255, 255, 0.44);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ── Workspace board (react-grid-layout) — clean, hover-revealed resize ── */
 /* Handles stay invisible until you hover the card, then fade in softly. The
    hit zones are wide (easy to grab) but the visible marks are slim and tasteful,

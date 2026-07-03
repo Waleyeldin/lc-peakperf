@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import type { Symbol } from './data'
+import type { Symbol, MarketCode } from './data'
 import { MARKET_OPTIONS, FULL_MARKET_COLUMNS, FULL_MARKET, fmtPrice, fmtPct } from './data'
 import { Button } from './components/ui'
 import MarketStrip from './components/MarketStrip'
@@ -21,7 +21,10 @@ import BrokerDesk from './components/BrokerDesk'
 import TabBar from './components/TabBar'
 import BoardGrid from './components/BoardGrid'
 import { listen } from '@tauri-apps/api/event'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getVersion } from '@tauri-apps/api/app'
 import { sendToBoard, closeBoard, openDetachedPanel } from './popout'
+import { checkForUpdates } from '../updater'
 import { useLiveData } from './liveData'
 import FloatingToolbar from './components/FloatingToolbar'
 
@@ -101,7 +104,7 @@ const NAV_TREE: NavSection[] = [
         { label: 'Sales Ticket Monitoring', screen: 'order-monitor' },
       ] },
       { group: 'Process', items: [
-        { label: 'Broker Trade Flow', screen: 'broker-flow' },
+        { label: 'Order Placement', screen: 'broker-flow' },
       ] },
     ],
   },
@@ -141,12 +144,22 @@ const PAGE_INDEX: ActiveLeaf[] = NAV_TREE.flatMap((sec) =>
 /** Browser-style document tabs — the open "files" from the eAccess header. */
 /** The merged workspace renders one of two "looks", switched by hotkey. */
 type ViewMode = 'detailed' | 'graph'
-/** One fixed document name across both looks — only the layout changes. */
-const DOC_NAME = 'LC…PeakPerf'
 
-interface Tab { id: string; title: string; kind: 'workspace' | 'placeholder'; pinned?: boolean }
+// Each workspace tab is bound to one market. DFM carries real-time Yahoo data;
+// ADX (and Nasdaq) are simulated. The user typically keeps one tab per market.
+const MARKET_TAB_LABEL: Record<MarketCode, string> = {
+  DFM: 'Dubai Financial Market',
+  ADX: 'Abu Dhabi Securities Exchange',
+  NASDAQ: 'Nasdaq Dubai',
+}
+const MARKET_TAB_SHORT: Record<MarketCode, string> = { DFM: 'DFM', ADX: 'ADX', NASDAQ: 'Nasdaq' }
+/** Markets offered in the tab dropdown + the "new tab" picker. */
+const TAB_MARKETS: MarketCode[] = ['DFM', 'ADX']
+
+interface Tab { id: string; title: string; kind: 'workspace' | 'placeholder'; pinned?: boolean; market?: MarketCode }
 const INITIAL_TABS: Tab[] = [
-  { id: 'lc', title: 'LC…PeakPerf', kind: 'workspace' },
+  { id: 'dfm', title: MARKET_TAB_LABEL.DFM, kind: 'workspace', market: 'DFM' },
+  { id: 'adx', title: MARKET_TAB_LABEL.ADX, kind: 'workspace', market: 'ADX' },
 ]
 
 function NavIcon({ d }: { d: string }) {
@@ -253,7 +266,7 @@ const DETAILED_HOTKEYS: { key: string; label: string; hint: string; action: Deta
   { key: 'F2', label: 'Buy', hint: 'Open a buy ticket', action: { kind: 'buy' } },
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
-  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Flow as its own window', action: { kind: 'broker' } },
+  { key: 'F5', label: 'Order Placement', hint: 'Open Order Placement as its own window', action: { kind: 'broker' } },
   { key: 'F6', label: 'Market', hint: 'Send the market table to the board window', action: { kind: 'pop', panel: 'd-market', title: 'Market' } },
   { key: 'F7', label: 'Watchlist', hint: 'Send the watchlist to the board window', action: { kind: 'pop', panel: 'd-right', title: 'Watchlist' } },
   { key: 'F8', label: 'Indices', hint: 'Send the market indices to the board window', action: { kind: 'pop', panel: 'd-indices', title: 'Indices' } },
@@ -408,18 +421,84 @@ function GlobalSearch({
   )
 }
 
-/** Top-bar indicator: green when DFM live data is flowing, else simulated. */
-function LiveStatusPill() {
+/** Top-bar indicator: green when the active market's data is live, else simulated.
+ *  Only DFM has a genuine feed; ADX / Nasdaq are always simulated. */
+function LiveStatusPill({ market }: { market?: MarketCode }) {
   const { status, lastUpdated, quotes } = useLiveData()
-  const live = status === 'live' && quotes.size > 0
+  const simulatedMarket = market !== undefined && market !== 'DFM'
+  const live = !simulatedMarket && status === 'live' && quotes.size > 0
   const time = lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
+  const label = simulatedMarket
+    ? `${MARKET_TAB_SHORT[market]} · Simulated`
+    : live ? `DFM live · ${time}` : status === 'connecting' ? 'Connecting…' : 'Simulated'
   return (
     <div
       className="flex items-center gap-1.5 text-[12px] text-white/70"
-      title={live ? `DFM live via Yahoo Finance · updated ${time}. ADX has no free feed, so it stays simulated.` : 'No live feed reachable — showing simulated data.'}
+      title={
+        simulatedMarket
+          ? `${MARKET_TAB_LABEL[market]} has no free live feed, so it stays simulated.`
+          : live ? `DFM live via Yahoo Finance · updated ${time}. ADX has no free feed, so it stays simulated.` : 'No live feed reachable — showing simulated data.'
+      }
     >
-      <span className={`inline-block size-2 rounded-full ${live ? 'bg-up shadow-[0_0_6px_rgba(47,208,122,0.8)]' : status === 'connecting' ? 'bg-amber-400' : 'bg-white/40'}`} />
-      {live ? `DFM live · ${time}` : status === 'connecting' ? 'Connecting…' : 'Simulated'}
+      <span className={`inline-block size-2 rounded-full ${live ? 'bg-up shadow-[0_0_6px_rgba(47,208,122,0.8)]' : status === 'connecting' && !simulatedMarket ? 'bg-amber-400' : 'bg-white/40'}`} />
+      {label}
+    </div>
+  )
+}
+
+/** User chip with an app menu — shows the version and a manual update check. */
+function UserMenu() {
+  const [open, setOpen] = useState(false)
+  const [version, setVersion] = useState('')
+  useEffect(() => {
+    if ('__TAURI_INTERNALS__' in window) void getVersion().then(setVersion).catch(() => {})
+  }, [])
+  return (
+    <div className="relative border-l border-white/10 pl-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-white/5"
+      >
+        <div className="flex size-7 items-center justify-center rounded-full bg-[#5b9bff]/20 text-[11px] font-semibold text-[#9cc0ff]">MB</div>
+        <div className="hidden text-left leading-tight lg:block">
+          <div className="text-[12px] font-medium text-white">MAHLYA</div>
+          <div className="text-[10px] text-white/50">broker08</div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-50 w-60 rounded-lg border border-border-dark bg-surface py-1 text-content shadow-2xl">
+          <div className="px-3 py-1.5 text-[11px] text-content-muted">Signed in as <span className="font-medium text-content">broker08</span></div>
+          <div className="my-1 h-px bg-border-dark" />
+          <button
+            onMouseDown={(e) => { e.preventDefault(); setOpen(false); void checkForUpdates({ silent: false }) }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-[rgba(255,255,255,0.06)]"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+            Check for updates…
+          </button>
+          <div className="px-3 pb-1.5 pt-1 text-[10px] text-content-subtle">{version ? `Version ${version}` : 'Desktop app'}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Market selector for the active Graph tab (DFM real-time / ADX simulated). */
+function MarketTabSelect({ market, onChange }: { market: MarketCode; onChange: (m: MarketCode) => void }) {
+  return (
+    <div className="relative" title="Switch this tab's market — DFM is real-time, ADX is simulated">
+      <select
+        value={market}
+        onChange={(e) => onChange(e.target.value as MarketCode)}
+        className="h-8 appearance-none rounded-md border border-white/10 bg-white/5 pl-2.5 pr-8 text-[13px] text-white outline-none focus:border-[#5b9bff]"
+      >
+        {TAB_MARKETS.map((m) => (
+          <option key={m} value={m} className="bg-surface">{MARKET_TAB_SHORT[m]} · {MARKET_TAB_LABEL[m]}</option>
+        ))}
+      </select>
+      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/60" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
     </div>
   )
 }
@@ -443,7 +522,7 @@ export default function TradingPlatform() {
   const [tabs, setTabs] = useState<Tab[]>(INITIAL_TABS)
   const [activeTab, setActiveTab] = useState(() => {
     const requested = searchParams.get('tab')
-    return INITIAL_TABS.some((t) => t.id === requested) ? (requested as string) : 'lc'
+    return INITIAL_TABS.some((t) => t.id === requested) ? (requested as string) : 'dfm'
   })
   const current = tabs.find((t) => t.id === activeTab) ?? tabs[0]
 
@@ -456,29 +535,74 @@ export default function TradingPlatform() {
   // When the detached "Workspace board" hits "Dock to main", it sends its
   // component list here and closes itself; we show it as an embedded grid.
   const [dockedBoard, setDockedBoard] = useState<string[] | null>(null)
+  // A second board docking while one is already docked prompts the user first.
+  const [pendingDock, setPendingDock] = useState<string[] | null>(null)
   // Where the docked board sits inside the main window.
   const [dockPos, setDockPos] = useState<'left' | 'right' | 'bottom' | 'full'>('right')
+  // Ref mirrors dockedBoard so the once-mounted dock listener sees the latest.
+  const dockedRef = useRef<string[] | null>(null)
+  useEffect(() => { dockedRef.current = dockedBoard }, [dockedBoard])
   useEffect(() => {
+    // If nothing is docked yet, dock straight away; otherwise stash the incoming
+    // board and ask the user whether to replace or add it next to the current one.
+    const receive = (ids: string[]) => {
+      if (!dockedRef.current || dockedRef.current.length === 0) setDockedBoard(ids)
+      else setPendingDock(ids)
+    }
     const inTauri = '__TAURI_INTERNALS__' in window
     if (inTauri) {
       let un: (() => void) | undefined
-      void listen<string[]>('board:dock', (e) => setDockedBoard(e.payload)).then((f) => { un = f })
+      void listen<string[]>('board:dock', (e) => receive(e.payload)).then((f) => { un = f })
       return () => un?.()
     }
     const ch = new BroadcastChannel('board-dock')
-    ch.onmessage = (e) => setDockedBoard(e.data as string[])
+    ch.onmessage = (e) => receive(e.data as string[])
     return () => ch.close()
   }, [])
+  // Resolve the "already docked" prompt: replace, append (deduped), or cancel.
+  const resolveDock = (mode: 'replace' | 'append' | null) => {
+    if (mode && pendingDock) {
+      if (mode === 'replace') setDockedBoard(pendingDock)
+      else setDockedBoard((prev) => [...new Set([...(prev ?? []), ...pendingDock])])
+    }
+    setPendingDock(null)
+  }
+
+  // ── Resizable docked board ──────────────────────────────────────
+  // Drag the board's inner edge to shrink/grow it so it never has to hog space.
+  const [dockW, setDockW] = useState(560) // px, for left/right docks
+  const [dockH, setDockH] = useState(360) // px, for the bottom dock
+  const dockResizeRef = useRef<{ axis: 'x' | 'y'; start: number; startSize: number; sign: number } | null>(null)
+  const beginDockResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const axis: 'x' | 'y' = dockPos === 'bottom' ? 'y' : 'x'
+    // Left dock grows to the right (+); right/bottom grow toward the main area (−).
+    const sign = dockPos === 'left' ? 1 : -1
+    dockResizeRef.current = { axis, start: axis === 'x' ? e.clientX : e.clientY, startSize: axis === 'x' ? dockW : dockH, sign }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveDockResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const ctx = dockResizeRef.current
+    if (!ctx) return
+    const cur = ctx.axis === 'x' ? e.clientX : e.clientY
+    const next = ctx.startSize + (cur - ctx.start) * ctx.sign
+    if (ctx.axis === 'x') setDockW(Math.max(300, Math.min(window.innerWidth - 420, next)))
+    else setDockH(Math.max(180, Math.min(window.innerHeight - 240, next)))
+  }
+  const endDockResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dockResizeRef.current = null
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
   const removeDocked = (id: string) =>
     setDockedBoard((prev) => {
       const next = (prev ?? []).filter((x) => x !== id)
       return next.length ? next : null
     })
-  // One fixed document name across both looks.
-  const displayTabs = tabs.map((t) => (t.kind === 'workspace' ? { ...t, title: DOC_NAME } : t))
+  // Each workspace tab shows its market name; placeholder tabs keep their title.
+  const displayTabs = tabs
 
   // Open the Broker Flow in its own dedicated window.
-  const openBrokerFlow = () => { void openDetachedPanel('broker-flow', 'Broker Flow') }
+  const openBrokerFlow = () => { void openDetachedPanel('broker-flow', 'Order Placement') }
 
   // Global workspace shortcuts (both looks): F11 switches look, F5 opens the
   // Broker Flow as its own window. Handled here once so neither look double-fires.
@@ -540,11 +664,37 @@ export default function TradingPlatform() {
     setTabs((prev) => [...prev, { id, title: 'New Tab', kind: 'placeholder' }])
     setActiveTab(id)
   }
+  // Change the active tab's market (drives the Graph terminal's dataset).
+  const setTabMarket = (id: string, m: MarketCode) =>
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, market: m, title: MARKET_TAB_LABEL[m], kind: 'workspace' } : t)))
+  // "+" → pick a market → open a fresh Graph terminal bound to it.
+  const openMarketTab = (m: MarketCode) => {
+    const id = `m${Date.now()}`
+    setTabs((prev) => [...prev, { id, title: MARKET_TAB_LABEL[m], kind: 'workspace', market: m }])
+    setActiveTab(id)
+    setViewMode('graph')
+  }
   const togglePin = (id: string) =>
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)))
-  const openInWindow = () => {
-    // Pop the document into its own browser window — handy for a second monitor.
-    window.open(`${window.location.origin}/trading?tab=lc`, '_blank', 'noopener,noreferrer,width=1360,height=880')
+  const openInWindow = (id: string) => {
+    // Open the tab's market terminal in its own window (handy for a 2nd monitor).
+    const tab = tabs.find((t) => t.id === id) ?? current
+    const targetTab = tab.market === 'ADX' ? 'adx' : 'dfm'
+    const url = `/trading?tab=${targetTab}`
+    if ('__TAURI_INTERNALS__' in window) {
+      // Tauri intercepts window.open(); the native window API is the working path.
+      new WebviewWindow(`doc-${targetTab}-${Date.now()}`, {
+        url,
+        title: tab.title,
+        width: 1360,
+        height: 880,
+        minWidth: 1100,
+        minHeight: 700,
+        resizable: true,
+      })
+    } else {
+      window.open(`${window.location.origin}${url}`, '_blank', 'noopener,noreferrer,width=1360,height=880')
+    }
   }
 
   const toggleSection = (s: Section, firstGroup: string) => {
@@ -611,7 +761,7 @@ export default function TradingPlatform() {
           <span className="text-[15px] font-bold tracking-tight">TRADE<span className="text-[#5b9bff]">NET</span> X</span>
         </Link>
         <span className="text-white/30">/</span>
-        <span className="text-[13px] font-medium text-white/80">{current.kind === 'workspace' ? DOC_NAME : current.title}</span>
+        <span className="text-[13px] font-medium text-white/80">{current.title}</span>
         {current.kind === 'workspace' && <ViewModeToggle mode={viewMode} onChange={setViewMode} />}
 
         {/* The Graph look (securities terminal) has its own symbol search, so
@@ -630,19 +780,24 @@ export default function TradingPlatform() {
         )}
 
         <div className="ml-auto flex items-center gap-3">
-          <div className="relative">
-            <select
-              value={market}
-              onChange={(e) => setMarket(e.target.value)}
-              className="h-8 appearance-none rounded-md border border-white/10 bg-white/5 pl-2.5 pr-8 text-[13px] text-white outline-none focus:border-[#5b9bff]"
-            >
-              {MARKET_OPTIONS.map((m) => (
-                <option key={m} className="bg-surface">{m}</option>
-              ))}
-            </select>
-            <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/60" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-          </div>
-          <LiveStatusPill />
+          {current.kind === 'workspace' && viewMode === 'graph' ? (
+            // Graph look: the dropdown drives THIS tab's market (real DFM / sim ADX).
+            <MarketTabSelect market={current.market ?? 'DFM'} onChange={(m) => setTabMarket(current.id, m)} />
+          ) : (
+            <div className="relative">
+              <select
+                value={market}
+                onChange={(e) => setMarket(e.target.value)}
+                className="h-8 appearance-none rounded-md border border-white/10 bg-white/5 pl-2.5 pr-8 text-[13px] text-white outline-none focus:border-[#5b9bff]"
+              >
+                {MARKET_OPTIONS.map((m) => (
+                  <option key={m} className="bg-surface">{m}</option>
+                ))}
+              </select>
+              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/60" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+            </div>
+          )}
+          <LiveStatusPill market={current.kind === 'workspace' && viewMode === 'graph' ? current.market ?? 'DFM' : undefined} />
           <WorkspaceMenu />
           <div className="flex items-center gap-2 border-l border-white/10 pl-3">
             <span className="flex items-center gap-1.5 text-[12px] text-white/70">
@@ -650,13 +805,7 @@ export default function TradingPlatform() {
             </span>
             <span className="hidden text-[12px] text-white/50 lg:inline">BANKFAB0335R1</span>
           </div>
-          <div className="flex items-center gap-2 border-l border-white/10 pl-3">
-            <div className="flex size-7 items-center justify-center rounded-full bg-[#5b9bff]/20 text-[11px] font-semibold text-[#9cc0ff]">MB</div>
-            <div className="hidden leading-tight lg:block">
-              <div className="text-[12px] font-medium text-white">MAHLYA</div>
-              <div className="text-[10px] text-white/50">broker08</div>
-            </div>
-          </div>
+          <UserMenu />
         </div>
       </header>
 
@@ -669,6 +818,12 @@ export default function TradingPlatform() {
         onTogglePin={togglePin}
         onOpenWindow={openInWindow}
         onNew={newTab}
+        newOptions={TAB_MARKETS.map((m) => ({
+          key: m,
+          label: MARKET_TAB_SHORT[m],
+          hint: `${MARKET_TAB_LABEL[m]} · ${m === 'DFM' ? 'real-time' : 'simulated'}`,
+        }))}
+        onNewOption={(key) => openMarketTab(key as MarketCode)}
       />
 
       {/* ── Body + docked board share the space as a real split ──── */}
@@ -768,7 +923,13 @@ export default function TradingPlatform() {
       </>
       ) : current.kind === 'workspace' ? (
         <div className="min-h-0 flex-1 overflow-hidden bg-page">
-          <FabTerminal onTrade={openTrade} onBrokerFlow={openBrokerFlow} />
+          {/* Key by tab+market so switching either remounts with the right dataset. */}
+          <FabTerminal
+            key={`${current.id}:${current.market ?? 'DFM'}`}
+            market={current.market ?? 'DFM'}
+            onTrade={openTrade}
+            onBrokerFlow={openBrokerFlow}
+          />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center bg-page p-6">
@@ -781,16 +942,34 @@ export default function TradingPlatform() {
       {/* Docked board occupies a real section of the screen, not an overlay. */}
       {dockedBoard && (
         <aside
-          className={`flex min-h-0 flex-col border-border-dark bg-page ${
+          className={`relative flex min-h-0 flex-col border-border-dark bg-page ${
             dockPos === 'full'
               ? 'flex-1'
               : dockPos === 'bottom'
-                ? 'h-[48%] min-h-[240px] border-t'
+                ? 'border-t'
                 : dockPos === 'left'
-                  ? 'w-[46%] min-w-[360px] max-w-[820px] border-r'
-                  : 'w-[46%] min-w-[360px] max-w-[820px] border-l'
+                  ? 'border-r'
+                  : 'border-l'
           }`}
+          style={dockPos === 'full' ? undefined : dockPos === 'bottom' ? { height: dockH } : { width: dockW }}
         >
+          {/* Drag the inner edge to resize the docked board. */}
+          {dockPos !== 'full' && (
+            <div
+              onPointerDown={beginDockResize}
+              onPointerMove={moveDockResize}
+              onPointerUp={endDockResize}
+              onLostPointerCapture={endDockResize}
+              title="Drag to resize the docked board"
+              className={`absolute z-40 bg-transparent transition-colors hover:bg-action/60 ${
+                dockPos === 'bottom'
+                  ? 'left-0 right-0 top-0 h-1.5 cursor-row-resize'
+                  : dockPos === 'left'
+                    ? 'bottom-0 right-0 top-0 w-1.5 cursor-col-resize'
+                    : 'bottom-0 left-0 top-0 w-1.5 cursor-col-resize'
+              }`}
+            />
+          )}
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-border-dark bg-[#141619] px-3">
             <span className="flex items-center gap-2 text-[13px] font-semibold text-content">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -853,6 +1032,29 @@ export default function TradingPlatform() {
         onSideChange={(side) => setTrade((t) => ({ ...t, side }))}
         onClose={() => setTrade((t) => ({ ...t, open: false }))}
       />
+
+      {/* Docking a second board while one is already docked — replace or merge? */}
+      {pendingDock && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => resolveDock(null)}>
+          <div className="w-[460px] max-w-[90%] rounded-2xl border border-border-dark bg-surface p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-1.5 text-[15px] font-semibold text-content">A board is already docked</h2>
+            <p className="mb-4 text-[13px] leading-relaxed text-content-muted">
+              The main window already has a docked board with{' '}
+              <span className="font-medium text-content">{dockedBoard?.length ?? 0}</span> component{(dockedBoard?.length ?? 0) === 1 ? '' : 's'}.
+              This new board has <span className="font-medium text-content">{pendingDock.length}</span> component{pendingDock.length === 1 ? '' : 's'}
+              {(() => {
+                const dup = pendingDock.filter((id) => (dockedBoard ?? []).includes(id)).length
+                return dup > 0 ? <>, of which <span className="font-medium text-content">{dup}</span> {dup === 1 ? 'is' : 'are'} already docked (won’t be duplicated)</> : null
+              })()}.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => resolveDock(null)}>Cancel</Button>
+              <Button size="sm" variant="default" onClick={() => resolveDock('append')}>Add next to current</Button>
+              <Button size="sm" variant="primary" onClick={() => resolveDock('replace')}>Replace</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

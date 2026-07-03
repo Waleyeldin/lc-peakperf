@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { emitTo } from '@tauri-apps/api/event'
 
 const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -54,6 +55,23 @@ export async function openDetachedPanel(id: string, title: string) {
 // ── Dock the board back into the main window ─────────────────────────────────
 // The board window hands its component list to the main window (which shows it
 // as an embedded grid) and then closes itself.
+/**
+ * Dock a single detached panel window (e.g. Broker Flow) back into the main
+ * window's docked board, then close THIS window. Uses the same channel as the
+ * board's "Dock to main".
+ */
+export async function dockPanelToMain(ids: string[]) {
+  if (inTauri) {
+    await emitTo('main', 'board:dock', ids)
+    await getCurrentWindow().close()
+    return
+  }
+  const ch = new BroadcastChannel('board-dock')
+  ch.postMessage(ids)
+  ch.close()
+  window.close() // runs inside the detached popup; close it
+}
+
 export async function dockBoardToMain(ids: string[]) {
   if (inTauri) {
     await emitTo('main', 'board:dock', ids)

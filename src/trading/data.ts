@@ -166,8 +166,8 @@ export const FULL_MARKET_COLUMNS: ColumnDef[] = [
 
 const SECTORS = ['Banking', 'Real Estate', 'Financials', 'Energy', 'Telecom', 'Consumer', 'Industrial', 'Insurance', 'Materials']
 
-type MarketCode = 'DFM' | 'ADX' | 'NASDAQ'
-const MARKET_NAMES: Record<MarketCode, string> = {
+export type MarketCode = 'DFM' | 'ADX' | 'NASDAQ'
+export const MARKET_NAMES: Record<MarketCode, string> = {
   DFM: 'Dubai Financial Market',
   ADX: 'Abu Dhabi Securities Exchange',
   NASDAQ: 'Nasdaq Dubai',

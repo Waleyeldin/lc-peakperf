@@ -22,7 +22,7 @@ function Home() {
   if (board) return <BoardWindow initial={board.split(',').filter(Boolean)} />
   const detach = params.get('detach')
   if (detach) return <DetachedView id={detach} />
-  return isTauri ? <Navigate to="/trading?tab=lc" replace /> : <App />
+  return isTauri ? <Navigate to="/trading?tab=dfm" replace /> : <App />
 }
 
 // Quietly check GitHub for a newer signed build once the app has booted.

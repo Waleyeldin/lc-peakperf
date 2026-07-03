@@ -327,7 +327,7 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
 }
 
 // ─── One customer widget (portfolio + contact + buy/sell) ────────────────────
-function CustomerPanel({ customer, watchSymbol, onClose }: { customer: DeskCustomer; watchSymbol: string; onClose: () => void }) {
+function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { customer: DeskCustomer; watchSymbol: string; onClose: () => void; vip: boolean; onToggleVip: () => void }) {
   // Prefill Buy with the stock the customer trades most — approximated by their
   // largest holding (e.g. Mahlya → AMANAT). Market Watch selection overrides it.
   const mostTraded = customer.holdings.length
@@ -363,7 +363,17 @@ function CustomerPanel({ customer, watchSymbol, onClose }: { customer: DeskCusto
         <span className="flex items-center gap-2">
           <span className="rounded bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[11px] font-bold text-[#9cc0ff]">{customer.sif}</span>
           <span className="text-[14px] font-semibold text-content">{customer.name}</span>
-          {customer.vip && <span className="rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b]">VIP</span>}
+          <button
+            onClick={onToggleVip}
+            title={vip ? 'VIP client — click to remove VIP status' : 'Mark this client as VIP'}
+            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+              vip
+                ? 'bg-[rgba(240,185,11,0.18)] text-[#f0c33b] hover:bg-[rgba(240,185,11,0.3)]'
+                : 'border border-border-dark text-content-subtle hover:bg-[rgba(255,255,255,0.06)] hover:text-content'
+            }`}
+          >
+            {vip ? '★ VIP' : '☆ Mark VIP'}
+          </button>
         </span>
         <span className="flex items-center gap-1 text-[12px] text-content-muted">📞 {customer.phone}</span>
         <span className="flex items-center gap-1 text-[12px]">
@@ -446,80 +456,248 @@ function CustomerPanel({ customer, watchSymbol, onClose }: { customer: DeskCusto
 
 // ─── Right: stacked customers + SIF entry ────────────────────────────────────
 function CustomerArea({ watchSymbol }: { watchSymbol: string }) {
-  const [open, setOpen] = useState<DeskCustomer[]>([DESK_CUSTOMERS[0]])
-  const [sif, setSif] = useState('')
+  // Start empty — no customer pre-loaded; the broker opens one by CIF.
+  const [open, setOpen] = useState<DeskCustomer[]>([])
+  const [activeSif, setActiveSif] = useState('') // which open client's tab is shown
+  const [vipMap, setVipMap] = useState<Record<string, boolean>>({}) // manual VIP overrides, survive tab switches
+  const [dragSif, setDragSif] = useState<string | null>(null) // tab being dragged to reorder
+  const [pinned, setPinned] = useState<Set<string>>(new Set()) // pinned tabs — kept, close-protected
+  const [cif, setCif] = useState('')
   const [error, setError] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const isVip = (c: DeskCustomer) => vipMap[c.sif] ?? c.vip
+  const toggleVip = (c: DeskCustomer) => setVipMap((m) => ({ ...m, [c.sif]: !(m[c.sif] ?? c.vip) }))
 
-  const openSif = (replace: boolean) => {
-    const c = findCustomer(sif)
-    if (!c) { setError(`No customer found for “${sif.trim()}”`); return }
-    setError('')
-    setSif('')
-    setOpen((prev) => (replace ? [c] : prev.some((p) => p.sif === c.sif) ? prev : [c, ...prev]))
+  // Browser-tab drag-to-reorder: live-swap the dragged tab over the hovered one.
+  const reorder = (targetSif: string) => {
+    if (dragSif === null || dragSif === targetSif) return
+    setOpen((prev) => {
+      const from = prev.findIndex((c) => c.sif === dragSif)
+      const to = prev.findIndex((c) => c.sif === targetSif)
+      if (from < 0 || to < 0) return prev
+      const next = prev.slice()
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
   }
-  const close = (s: string) => setOpen((prev) => prev.filter((c) => c.sif !== s))
+
+  // Autocomplete: match the typed text against CIF number, name or SIF.
+  const matches = useMemo(() => {
+    const q = cif.trim().toLowerCase()
+    const d = cif.replace(/\D/g, '')
+    if (!q) return DESK_CUSTOMERS
+    return DESK_CUSTOMERS.filter(
+      (c) => (d !== '' && c.cif.includes(d)) || c.name.toLowerCase().includes(q) || c.sif.toLowerCase().includes(q),
+    )
+  }, [cif])
+
+  const openCustomer = (c: DeskCustomer, replace: boolean) => {
+    setError('')
+    setCif('')
+    setPickerOpen(false)
+    setOpen((prev) => (replace ? [c] : prev.some((p) => p.sif === c.sif) ? prev : [c, ...prev]))
+    setActiveSif(c.sif) // focus the newly opened client's tab
+  }
+  const openByInput = (replace: boolean) => {
+    const c = findCustomer(cif)
+    if (!c) { setError(`No customer found for “${cif.trim()}”`); return }
+    openCustomer(c, replace)
+  }
+  // When the search matches several clients, open them all (stacked).
+  const addAllMatches = () => {
+    setError('')
+    setCif('')
+    setPickerOpen(false)
+    setOpen((prev) => {
+      const seen = new Set(prev.map((p) => p.sif))
+      return [...matches.filter((c) => !seen.has(c.sif)), ...prev]
+    })
+    if (matches[0]) setActiveSif(matches[0].sif)
+  }
+  // Close a tab; if it was the active one, activate the neighbour to its right
+  // (or left if it was last) — same as a browser closing a tab.
+  const close = (s: string) => {
+    const idx = open.findIndex((c) => c.sif === s)
+    const next = open.filter((c) => c.sif !== s)
+    setOpen(next)
+    if (s === activeSif) setActiveSif((next[idx] ?? next[idx - 1])?.sif ?? '')
+  }
+
+  const isPinned = (s: string) => pinned.has(s)
+  const togglePin = (s: string) => setPinned((prev) => {
+    const n = new Set(prev)
+    n.has(s) ? n.delete(s) : n.add(s)
+    return n
+  })
+  // Pinned tabs cluster at the front (like a browser), preserving relative order.
+  const orderedTabs = useMemo(() => {
+    const pin = open.filter((c) => pinned.has(c.sif))
+    const rest = open.filter((c) => !pinned.has(c.sif))
+    return [...pin, ...rest]
+  }, [open, pinned])
+
+  // The client whose tab is shown (falls back to the first open one).
+  const activeCustomer = open.find((c) => c.sif === activeSif) ?? orderedTabs[0]
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {/* CIF entry — the single action that verifies & opens the customer */}
+      {/* CIF entry — type or pick a client; add several to stack their desks. */}
       <div className="shrink-0 rounded-xl border border-border-dark bg-surface p-3">
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[12px] font-semibold text-content-muted">CIF</span>
-          <input
-            value={sif}
-            onChange={(e) => setSif(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') openSif(false) }}
-            placeholder="Enter customer CIF number to verify & open their desk…"
-            className="h-9 min-w-0 flex-1 rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
-          />
-          <button onClick={() => openSif(false)} className="h-9 rounded-md px-3 text-[12px] font-semibold text-white" style={{ background: BLUE }}>Open (stack)</button>
-          <button onClick={() => openSif(true)} className="h-9 rounded-md border border-border-dark px-3 text-[12px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]">Replace all</button>
+          <span className="text-[12px] font-semibold text-content-muted">CIF</span>
+          <div className="relative min-w-0 flex-1">
+            <input
+              value={cif}
+              onChange={(e) => { setCif(e.target.value); setPickerOpen(true) }}
+              onFocus={() => setPickerOpen(true)}
+              onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') openByInput(false)
+                else if (e.key === 'Escape') setPickerOpen(false)
+              }}
+              placeholder="Type or select a CIF / client…"
+              className="h-9 w-full rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
+            />
+            {pickerOpen && matches.length > 0 && (
+              <ul className="absolute left-0 top-full z-30 mt-1 max-h-64 w-full min-w-[300px] overflow-auto rounded-lg border border-border-dark bg-surface shadow-xl">
+                {matches.map((c) => (
+                  <li key={c.sif}>
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); openCustomer(c, false) }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[rgba(0,98,255,0.12)]"
+                    >
+                      <span className="rounded bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#9cc0ff]">{c.cif}</span>
+                      <span className="flex-1 truncate font-medium text-content">{c.name}</span>
+                      {c.vip && <span className="text-[10px] font-bold text-[#f0c33b]">★ VIP</span>}
+                      <span className="text-[11px] text-content-muted">{c.sif}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {cif.trim() !== '' && matches.length > 1 && (
+            <button onClick={addAllMatches} className="h-9 shrink-0 rounded-md px-3 text-[12px] font-semibold text-white" style={{ background: BLUE }} title={`Open all ${matches.length} matching clients`}>Add all ({matches.length})</button>
+          )}
         </div>
+        {/* Quick-open is limited to VIP clients to keep it short; everyone else
+            is reachable via the search box above. */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-content-muted">Quick:</span>
-          {DESK_CUSTOMERS.map((c) => (
+          <span className="text-[11px] font-medium text-[#f0c33b]">★ VIP:</span>
+          {DESK_CUSTOMERS.filter((c) => isVip(c)).map((c) => (
             <button
               key={c.sif}
-              onClick={() => setOpen((prev) => (prev.some((p) => p.sif === c.sif) ? prev : [c, ...prev]))}
-              className="rounded border border-border-dark px-2 py-0.5 text-[11px] text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
+              onClick={() => openCustomer(c, false)}
+              className="rounded border border-[rgba(240,185,11,0.35)] bg-[rgba(240,185,11,0.08)] px-2 py-0.5 text-[11px] text-content-muted hover:bg-[rgba(240,185,11,0.16)] hover:text-content"
               title={`Open ${c.name}`}
             >
-              {c.name} · CIF {c.cif}{c.vip ? ' ★' : ''}
+              {c.name} · CIF {c.cif}
             </button>
           ))}
+          {!DESK_CUSTOMERS.some((c) => isVip(c)) && <span className="text-[11px] text-content-subtle">none — search above to open a client</span>}
+          <span className="ml-auto text-[10px] text-content-subtle">Add multiple to stack their desks</span>
         </div>
         {error && <div className="mt-2 text-[11px] text-down">{error}</div>}
       </div>
 
-      {/* Stacked customer widgets */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        {open.length === 0 ? (
+      {/* Open clients as tabs — switch between them instead of a tall stack. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {open.length === 0 || !activeCustomer ? (
           <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border-dark text-[13px] text-content-muted">
-            Enter a SIF to open a customer.
+            Enter a CIF to open a customer.
           </div>
         ) : (
-          open.map((c) => (
-            <div key={c.sif} className="flex shrink-0 flex-col gap-2">
-              {/* Labeled separator so stacked customers are clearly divided */}
-              <div className="flex items-center gap-2 px-0.5 pt-1">
-                <span className="rounded bg-[rgba(0,98,255,0.18)] px-2 py-0.5 text-[11px] font-bold text-[#9cc0ff]">{c.sif}</span>
-                <span className="text-[12px] font-semibold text-content">{c.name}</span>
-                <span className="h-px flex-1 bg-border-dark" />
-              </div>
-              <CustomerPanel customer={c} watchSymbol={watchSymbol} onClose={() => close(c.sif)} />
+          <>
+            {/* Tab strip */}
+            <div className="flex shrink-0 items-end gap-1 overflow-x-auto border-b border-border-dark">
+              {orderedTabs.map((c) => {
+                const active = c.sif === activeCustomer.sif
+                return (
+                  <div
+                    key={c.sif}
+                    role="tab"
+                    aria-selected={active}
+                    draggable
+                    onClick={() => setActiveSif(c.sif)}
+                    onAuxClick={(e) => { if (e.button === 1 && !isPinned(c.sif)) { e.preventDefault(); close(c.sif) } }}
+                    onDragStart={(e) => { setDragSif(c.sif); e.dataTransfer.effectAllowed = 'move' }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; reorder(c.sif) }}
+                    onDragEnd={() => setDragSif(null)}
+                    title={`${c.name} · CIF ${c.cif}`}
+                    className={`group flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 py-1.5 text-[12px] transition-opacity ${
+                      dragSif === c.sif ? 'opacity-50' : ''
+                    } ${
+                      active
+                        ? 'border-border-dark bg-surface text-content'
+                        : 'border-transparent text-content-muted hover:bg-[rgba(255,255,255,0.05)]'
+                    }`}
+                  >
+                    {isPinned(c.sif) && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-action" aria-hidden><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6z" /></svg>
+                    )}
+                    <span className="rounded bg-[rgba(0,98,255,0.18)] px-1 py-0.5 text-[10px] font-bold tabular-nums text-[#9cc0ff]">{c.cif}</span>
+                    <span className="max-w-[140px] truncate font-medium">{c.name}</span>
+                    {isVip(c) && <span className="text-[10px] text-[#f0c33b]">★</span>}
+                    {isPinned(c.sif) ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); togglePin(c.sif) }}
+                        className="rounded p-0.5 text-action hover:bg-[rgba(255,255,255,0.1)]"
+                        aria-label={`Unpin ${c.name}`}
+                        title="Pinned — click to unpin"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6l-1 6 3 3v2h-4v6l-1 2-1-2v-6H7v-2l3-3-1-6z" /></svg>
+                      </button>
+                    ) : (
+                      <span className="flex items-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); togglePin(c.sif) }}
+                          className="rounded p-0.5 text-content-muted opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.1)] hover:text-content group-hover:opacity-100"
+                          aria-label={`Pin ${c.name}`}
+                          title="Pin tab"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6z" /><path d="M12 16v5" /></svg>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); close(c.sif) }}
+                          className="rounded p-0.5 text-content-muted hover:bg-[rgba(255,255,255,0.1)] hover:text-content"
+                          aria-label={`Close ${c.name}`}
+                          title="Close"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          ))
+
+            {/* Active client */}
+            <div className="min-h-0 flex-1 overflow-y-auto pt-3">
+              <CustomerPanel
+                key={activeCustomer.sif}
+                customer={activeCustomer}
+                watchSymbol={watchSymbol}
+                onClose={() => close(activeCustomer.sif)}
+                vip={isVip(activeCustomer)}
+                onToggleVip={() => toggleVip(activeCustomer)}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>
   )
 }
 
-// ─── Broker Desk (split screen) ──────────────────────────────────────────────
-export default function BrokerDesk() {
+// ─── Order Placement desk (split screen) ─────────────────────────────────────
+export default function BrokerDesk({ compact = false, onDock }: { compact?: boolean; onDock?: () => void }) {
   // Empty by default so each customer's Buy prefills THEIR most-traded stock
   // (usualStocks[0]); picking a symbol in Market Watch overrides it.
   const [watchSymbol, setWatchSymbol] = useState<string>('')
+  // Market Watch can be hidden (e.g. when docked into a narrow area).
+  const [showWatch, setShowWatch] = useState(!compact)
   const [toasts, setToasts] = useState<Toast[]>([])
   const idRef = useRef(0)
   const notify = useCallback((msg: string, tone: ToastTone) => {
@@ -530,12 +708,39 @@ export default function BrokerDesk() {
 
   return (
     <ToastCtx.Provider value={notify}>
-      <div className="flex h-full min-h-0 gap-3 p-3">
-        <div className="hidden w-[34%] min-w-[340px] max-w-[460px] md:block">
-          <MarketWatch symbol={watchSymbol} onPick={setWatchSymbol} />
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Toolbar: toggle the Market Watch, and (in its own window) dock to main. */}
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-dark bg-[#141619] px-3">
+          <button
+            onClick={() => setShowWatch((v) => !v)}
+            title="Show or hide the Market Watch panel"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></svg>
+            {showWatch ? 'Hide' : 'Show'} Market Watch
+          </button>
+          {onDock && (
+            <button
+              onClick={onDock}
+              title="Bring this into the main window"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 10l-5 5 5 5" /><path d="M4 15h11a5 5 0 0 0 5-5V4" /></svg>
+              Dock to main
+            </button>
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <CustomerArea watchSymbol={watchSymbol} />
+        {/* Wide: Market Watch on the left. Docked (compact): stacked — Market
+            Watch on top, the CIF/client area below. Hidden → CIF takes it all. */}
+        <div className={`flex min-h-0 flex-1 gap-3 p-3 ${compact ? 'flex-col' : ''}`}>
+          {showWatch && (
+            <div className={compact ? 'h-[260px] shrink-0' : 'hidden w-[34%] min-w-[340px] max-w-[460px] md:block'}>
+              <MarketWatch symbol={watchSymbol} onPick={setWatchSymbol} />
+            </div>
+          )}
+          <div className="min-h-0 min-w-0 flex-1">
+            <CustomerArea watchSymbol={watchSymbol} />
+          </div>
         </div>
       </div>
       <ToastHost toasts={toasts} />

@@ -6,6 +6,7 @@ import FullMarket from './components/FullMarket'
 import RightPanel from './components/RightPanel'
 import BrokerDesk from './components/BrokerDesk'
 import BuySellDrawer from './components/BuySellDrawer'
+import { dockPanelToMain } from './popout'
 import { FULL_MARKET_COLUMNS } from './data'
 import type { Symbol } from './data'
 
@@ -47,7 +48,7 @@ export default function DetachedView({ id }: { id: string }) {
     case 'd-right':
       return <TradeHost render={(onTrade) => <RightPanel onTrade={onTrade} />} />
     case 'broker-flow':
-      return <div className="h-screen w-screen bg-page"><BrokerDesk /></div>
+      return <div className="h-screen w-screen bg-page"><BrokerDesk onDock={() => void dockPanelToMain(['broker-flow'])} /></div>
     default:
       return <DetachedPanel id={id} />
   }

@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, PointerEvent, ReactNode } from 'react'
 import { sendToBoard } from '../popout'
 import { usePrices, useLiveSymbols } from '../simData'
-import { Panel, Button, Badge, SegmentedTabs } from './ui'
+import { Panel, Button, Badge, SegmentedTabs, Drawer } from './ui'
 import BuySellDrawer from './BuySellDrawer'
 import {
   MARKET_INDICES,
   FULL_MARKET,
   WATCHLIST,
-  TOP_SYMBOLS,
   TICKERS,
   MARKET_DEPTH_FULL,
   TIME_SALES,
+  MARKET_NAMES,
   getCandles,
   fmtPrice,
   fmtInt,
@@ -19,7 +19,41 @@ import {
   fmtChange,
   fmtMoney,
 } from '../data'
-import type { Symbol, Candle } from '../data'
+import type { Symbol, Candle, MarketCode, MarketIndex } from '../data'
+import { useLiveData } from '../liveData'
+
+// ── Market scoping ───────────────────────────────────────────────────────────
+// The terminal is bound to one market at a time (driven by the active tab).
+// DFM carries as much real Yahoo data as we can get; ADX / Nasdaq are simulated.
+const PREFERRED_SYMBOL: Partial<Record<MarketCode, string>> = { DFM: 'EMAAR', ADX: 'FAB', NASDAQ: 'DPW' }
+
+/** All symbols listed on a given market. */
+function symbolsForMarket(market: MarketCode): Symbol[] {
+  return FULL_MARKET.filter((s) => s.marketShortName === market)
+}
+
+/** A sensible default symbol to open the terminal on for a market. */
+function defaultSymbolFor(market: MarketCode): Symbol {
+  const list = symbolsForMarket(market)
+  const pref = PREFERRED_SYMBOL[market]
+  return list.find((s) => s.symbolShortName === pref) ?? list[0] ?? FULL_MARKET[0]
+}
+
+/** Indices that belong to a market. */
+function indicesForMarket(market: MarketCode) {
+  return MARKET_INDICES.filter((ix) => ix.marketName === MARKET_NAMES[market])
+}
+
+/** Watchlist scoped to the market (the curated DFM list, or the market's names). */
+function watchlistForMarket(market: MarketCode): Symbol[] {
+  if (market === 'DFM') return WATCHLIST
+  return symbolsForMarket(market).slice(0, 10)
+}
+
+/** Whether a market has genuine live coverage (only DFM, via Yahoo). */
+function marketHasLiveFeed(market: MarketCode): boolean {
+  return market === 'DFM'
+}
 
 /**
  * FabTerminal — a Bloomberg-grade, information-dense multi-panel securities
@@ -141,12 +175,12 @@ function bySymbol(short: string): Symbol | undefined {
 }
 
 // ── Indices panel ──────────────────────────────────────────────────────────
-function IndicesPanel({ tick }: { tick: number }) {
+function IndicesPanel({ tick, indices }: { tick: number; indices: MarketIndex[] }) {
   const price = usePrices()
   return (
     <Panel title="Indices" bodyClassName="overflow-y-auto" noPadding>
       <ul className="divide-y divide-border-dark">
-        {MARKET_INDICES.map((ix) => {
+        {indices.map((ix) => {
           // Base off the real (DFM index) / simulated (ADX etc.) value, then a
           // tiny oscillation; chg% recomputed vs prevClose so ▲/▼ stay in sync.
           const base = price(ix.shortName)?.last ?? ix.indexCurrent
@@ -179,15 +213,37 @@ function IndicesPanel({ tick }: { tick: number }) {
 const PAD_L = 12
 const PAD_R = 46
 
-function CandleChart({ candles: src, mode, tick }: { candles: Candle[]; mode: 'Candles' | 'Line'; tick: number }) {
-  const w = 760
-  const h = 200
+/** Track an element's live pixel width (responsive to panel resize). */
+function useElementWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    setWidth(el.getBoundingClientRect().width)
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width
+      if (w) setWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, width]
+}
+
+function CandleChart({ candles: src, mode, tick, width }: { candles: Candle[]; mode: 'Candles' | 'Line'; tick: number; width: number }) {
+  // Render at the container's real pixel width, 1:1 (no viewBox scaling), so the
+  // chart fills the panel and spreads as it resizes — without stretching candles
+  // or axis text. Callers only mount this once `width` is measured (> 0).
+  const w = Math.max(160, Math.round(width))
+  const h = 220
   const padL = PAD_L
   const padR = PAD_R
   const padT = 8
   const padB = 8
   const plotW = w - padL - padR
   const plotH = h - padT - padB
+  const [hover, setHover] = useState<number | null>(null)
 
   // Animate ONLY the last candle so the chart "breathes" — never mutate source.
   const candles = useMemo(() => {
@@ -208,14 +264,12 @@ function CandleChart({ candles: src, mode, tick }: { candles: Candle[]; mode: 'C
 
   const slot = plotW / candles.length
   const bodyW = Math.max(2, slot * 0.62)
+  const xAt = (i: number) => padL + i * slot + slot / 2
 
   const gridVals = Array.from({ length: 5 }, (_, i) => min + (span * i) / 4)
 
   // Smooth-ish close-price line (centred in each slot) for Line mode.
-  const linePts = candles.map((c, i) => {
-    const x = padL + i * slot + slot / 2
-    return { x, y: y(c.c) }
-  })
+  const linePts = candles.map((c, i) => ({ x: xAt(i), y: y(c.c) }))
   const linePath = linePts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const areaPath =
     linePts.length > 0
@@ -223,8 +277,32 @@ function CandleChart({ candles: src, mode, tick }: { candles: Candle[]; mode: 'C
       : ''
   const lineDir = candles.length >= 2 && candles[candles.length - 1].c >= candles[0].c ? UP : DOWN
 
+  // Map a pointer event to the nearest candle index (viewBox units == px here).
+  const onMove = (e: PointerEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width === 0) return
+    const px = ((e.clientX - rect.left) / rect.width) * w
+    const idx = Math.max(0, Math.min(candles.length - 1, Math.round((px - padL - slot / 2) / slot)))
+    setHover(idx)
+  }
+
+  const hc = hover != null ? candles[hover] : null
+  const hx = hover != null ? xAt(hover) : 0
+  const hUp = hc ? hc.c >= hc.o : true
+  // Tooltip box, flipped to the left of the cursor near the right edge.
+  const boxW = 92
+  const boxH = 62
+  const bx = hover != null ? (hx + boxW + 12 > w - padR ? hx - boxW - 8 : hx + 8) : 0
+
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: h }} preserveAspectRatio="xMidYMid meet">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      width={w}
+      height={h}
+      className="block w-full touch-none"
+      onPointerMove={onMove}
+      onPointerLeave={() => setHover(null)}
+    >
       <defs>
         <linearGradient id="heroArea" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#0062ff" stopOpacity={0.28} />
@@ -247,7 +325,7 @@ function CandleChart({ candles: src, mode, tick }: { candles: Candle[]; mode: 'C
         </>
       ) : (
         candles.map((c, i) => {
-          const cx = padL + i * slot + slot / 2
+          const cx = xAt(i)
           const up = c.c >= c.o
           const col = up ? UP : DOWN
           const yo = y(c.o)
@@ -255,19 +333,38 @@ function CandleChart({ candles: src, mode, tick }: { candles: Candle[]; mode: 'C
           const top = Math.min(yo, yc)
           const bh = Math.max(1, Math.abs(yc - yo))
           return (
-            <g key={i}>
+            <g key={i} opacity={hover != null && hover !== i ? 0.55 : 1}>
               <line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={1} />
               <rect x={cx - bodyW / 2} y={top} width={bodyW} height={bh} fill={col} rx={0.6} />
             </g>
           )
         })
       )}
+
+      {/* Interactive crosshair + OHLC tooltip */}
+      {hc && (
+        <g pointerEvents="none">
+          <line x1={hx} x2={hx} y1={padT} y2={h - padB} stroke={LABEL} strokeWidth={1} strokeDasharray="3 3" opacity={0.6} />
+          <line x1={padL} x2={padL + plotW} y1={y(hc.c)} y2={y(hc.c)} stroke={LABEL} strokeWidth={1} strokeDasharray="3 3" opacity={0.35} />
+          <circle cx={hx} cy={y(hc.c)} r={3} fill={hUp ? UP : DOWN} />
+          <rect x={w - padR + 1} y={y(hc.c) - 7} width={padR - 2} height={14} rx={2} fill={hUp ? UP : DOWN} />
+          <text x={w - 3} y={y(hc.c) + 3} textAnchor="end" fontSize={9} fill="#0b0c0d" className="tabular-nums" fontWeight={700}>{hc.c.toFixed(2)}</text>
+          <g transform={`translate(${bx}, ${padT + 4})`}>
+            <rect width={boxW} height={boxH} rx={4} fill="#0b0c0d" stroke={GRID} />
+            {([['O', hc.o], ['H', hc.h], ['L', hc.l], ['C', hc.c]] as const).map(([k, v], i) => (
+              <text key={k} x={8} y={15 + i * 13} fontSize={9} className="tabular-nums" fill={LABEL}>
+                {k} <tspan fill={hUp ? UP : DOWN}>{v.toFixed(2)}</tspan>
+              </text>
+            ))}
+          </g>
+        </g>
+      )}
     </svg>
   )
 }
 
-function VolumeChart({ candles }: { candles: Candle[] }) {
-  const w = 760
+function VolumeChart({ candles, width }: { candles: Candle[]; width: number }) {
+  const w = Math.max(160, Math.round(width))
   const h = 40
   const padL = PAD_L
   const padR = PAD_R
@@ -276,7 +373,7 @@ function VolumeChart({ candles }: { candles: Candle[] }) {
   const slot = plotW / candles.length
   const barW = Math.max(2, slot * 0.62)
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: h }} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block w-full">
       {candles.map((c, i) => {
         const cx = padL + i * slot + slot / 2
         const bh = (c.v / max) * (h - 2)
@@ -301,6 +398,7 @@ type ChartMode = (typeof CHART_MODES)[number]
 
 function HeroPanel({ sym, onTrade, tick }: { sym: Symbol; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; tick: number }) {
   const [mode, setMode] = useState<ChartMode>('Candles')
+  const [chartRef, chartW] = useElementWidth<HTMLDivElement>()
   const candles = useMemo(() => getCandles(sym.symbolShortName).slice(-45), [sym.symbolShortName])
 
   // Base off the real live (DFM) / simulated (ADX) price where available, then
@@ -364,8 +462,14 @@ function HeroPanel({ sym, onTrade, tick }: { sym: Symbol; onTrade: (symbol: Symb
               <SegmentedTabs tabs={CHART_MODES} value={mode} onChange={setMode} />
             </div>
           </div>
-          <CandleChart candles={candles} mode={mode} tick={tick} />
-          <VolumeChart candles={candles} />
+          <div ref={chartRef} style={{ minHeight: 260 }}>
+            {chartW > 0 && (
+              <>
+                <CandleChart candles={candles} mode={mode} tick={tick} width={chartW} />
+                <VolumeChart candles={candles} width={chartW} />
+              </>
+            )}
+          </div>
         </div>
       </div>
     </Panel>
@@ -443,11 +547,11 @@ function OrderBookPanel({ short, tick }: { short: string; tick: number }) {
 }
 
 // ── Market Breadth ───────────────────────────────────────────────────────
-function BreadthPanel({ tick }: { tick: number }) {
-  const adv = FULL_MARKET.filter((s) => s.changePct > 0)
-  const dec = FULL_MARKET.filter((s) => s.changePct < 0)
-  const unch = FULL_MARKET.filter((s) => s.changePct === 0)
-  const total = FULL_MARKET.length || 1
+function BreadthPanel({ tick, symbols }: { tick: number; symbols: Symbol[] }) {
+  const adv = symbols.filter((s) => s.changePct > 0)
+  const dec = symbols.filter((s) => s.changePct < 0)
+  const unch = symbols.filter((s) => s.changePct === 0)
+  const total = symbols.length || 1
   const upVol = adv.reduce((s, x) => s + x.volume, 0)
   const downVol = dec.reduce((s, x) => s + x.volume, 0)
   const volMax = Math.max(upVol, downVol) || 1
@@ -507,9 +611,9 @@ function BreadthPanel({ tick }: { tick: number }) {
 }
 
 // ── Sector Performance ─────────────────────────────────────────────────────
-function SectorPanel() {
+function SectorPanel({ symbols }: { symbols: Symbol[] }) {
   const map = new Map<string, { sum: number; n: number }>()
-  for (const s of FULL_MARKET) {
+  for (const s of symbols) {
     const e = map.get(s.sector) ?? { sum: 0, n: 0 }
     e.sum += s.changePct
     e.n += 1
@@ -568,8 +672,8 @@ function SectorPanel() {
 }
 
 // ── Movers ─────────────────────────────────────────────────────────────────
-function MoversPanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
-  const active = useLiveSymbols(FULL_MARKET).filter((s) => s.lastPrice > 0)
+function MoversPanel({ onSelect, onTrade, symbols }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; symbols: Symbol[] }) {
+  const active = useLiveSymbols(symbols).filter((s) => s.lastPrice > 0)
   const gainers = [...active].sort((a, b) => b.changePct - a.changePct).slice(0, 6)
   const losers = [...active].sort((a, b) => a.changePct - b.changePct).slice(0, 6)
   const maxG = Math.max(...gainers.map((s) => s.changePct), 0.1)
@@ -614,8 +718,9 @@ function MoversPanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onT
 }
 
 // ── Most Active ──────────────────────────────────────────────────────────
-function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
+function MostActivePanel({ onSelect, onTrade, symbols }: { onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; symbols: Symbol[] }) {
   const price = usePrices()
+  const rows = [...symbols].filter((s) => s.volume > 0).sort((a, b) => b.volume - a.volume).slice(0, 10)
   return (
     <Panel title="Most Active" bodyClassName="overflow-y-auto" noPadding>
       <table className="w-full text-[12px]">
@@ -630,27 +735,24 @@ function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void;
           </tr>
         </thead>
         <tbody className="divide-y divide-border-dark">
-          {TOP_SYMBOLS.map((s) => {
+          {rows.map((s) => {
             const q = price(s.symbolShortName)
             const last = q?.last ?? s.lastPrice
             const pct = q?.changePct ?? s.changePct
             const tone = pct > 0 ? 'text-up' : pct < 0 ? 'text-down' : 'text-flat'
-            const full = bySymbol(s.symbolShortName)
             return (
               <tr
                 key={s.id}
-                onClick={() => full && onSelect(full)}
+                onClick={() => onSelect(s)}
                 className="group cursor-pointer hover:bg-[rgba(255,255,255,0.03)]"
               >
                 <td className="px-4 py-1.5 font-medium text-content">{s.symbolShortName}</td>
                 <td className="relative max-w-0 truncate px-2 py-1.5 text-content-muted">
                   <span className="group-hover:invisible">{s.symbolName}</span>
-                  {full && (
-                    <span className="invisible absolute inset-y-0 left-2 flex items-center gap-1 group-hover:visible">
-                      <Button size="sm" variant="buy" className="h-5 px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); onTrade(full, 'buy') }}>Buy</Button>
-                      <Button size="sm" variant="sell" className="h-5 px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); onTrade(full, 'sell') }}>Sell</Button>
-                    </span>
-                  )}
+                  <span className="invisible absolute inset-y-0 left-2 flex items-center gap-1 group-hover:visible">
+                    <Button size="sm" variant="buy" className="h-5 px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); onTrade(s, 'buy') }}>Buy</Button>
+                    <Button size="sm" variant="sell" className="h-5 px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); onTrade(s, 'sell') }}>Sell</Button>
+                  </span>
                 </td>
                 <td className="px-2 py-1.5 text-center"><span className="inline-flex justify-center"><RowSparkline short={s.symbolShortName} /></span></td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-content">{fmtPrice(last)}</td>
@@ -666,29 +768,308 @@ function MostActivePanel({ onSelect, onTrade }: { onSelect: (s: Symbol) => void;
 }
 
 // ── News ─────────────────────────────────────────────────────────────────
-const NEWS: { time: string; headline: string }[] = [
-  { time: '10:42', headline: 'DFM extends gains led by real estate' },
-  { time: '10:31', headline: 'Emaar Q4 profit beats estimates' },
-  { time: '10:18', headline: 'ADNOC Drilling declares dividend' },
-  { time: '09:57', headline: 'UAE banks rally on rate outlook' },
-  { time: '09:44', headline: 'Salik volumes surge as traffic scheme expands' },
-  { time: '09:30', headline: 'ADX IPO pipeline broadens into industrials' },
-  { time: '09:12', headline: 'Tabreed wins KSA district-cooling concession' },
-  { time: '08:55', headline: 'Foreign inflows lift Nasdaq Dubai to fresh high' },
+export interface NewsItem {
+  id: string
+  time: string
+  headline: string
+  source: string
+  category: string
+  sentiment: 'up' | 'down' | 'neutral'
+  /** Related tickers (symbolShortName) — drives the "Related to <symbol>" feed. */
+  symbols: string[]
+  summary: string
+  body: string[]
+}
+
+const NEWS: NewsItem[] = [
+  {
+    id: 'n1', time: '10:42', source: 'Reuters', category: 'Markets', sentiment: 'up',
+    symbols: ['EMAAR', 'EMAARDEV', 'DAMAC', 'DEYAAR'],
+    headline: 'DFM extends gains led by real estate',
+    summary: 'Dubai’s benchmark index climbed for a third session as property developers rallied on strong off-plan sales momentum.',
+    body: [
+      'The DFM General Index rose 0.4% in morning trade, on course for its longest winning streak in six weeks, with real-estate names accounting for the bulk of the advance.',
+      'Turnover was concentrated in blue-chip developers, where foreign institutional buying picked up after upbeat off-plan sales data for the quarter.',
+      'Analysts pointed to resilient population growth and a firm rental market as continuing tailwinds for the sector into the second half.',
+    ],
+  },
+  {
+    id: 'n2', time: '10:31', source: 'Bloomberg', category: 'Earnings', sentiment: 'up',
+    symbols: ['EMAAR'],
+    headline: 'Emaar Q4 profit beats estimates',
+    summary: 'Emaar Properties reported quarterly net income ahead of consensus, driven by record property handovers and recurring mall revenue.',
+    body: [
+      'Emaar Properties posted a forecast-beating quarterly profit, as a surge in completed unit handovers and resilient footfall across its retail assets lifted the top line.',
+      'Management flagged a healthy development backlog and reiterated full-year revenue guidance, adding that recurring income from malls and hospitality continued to grow double digits.',
+      'The board is expected to recommend a dividend broadly in line with the prior-year distribution, subject to shareholder approval.',
+    ],
+  },
+  {
+    id: 'n3', time: '10:24', source: 'Zawya', category: 'Dividends', sentiment: 'up',
+    symbols: ['EMAAR', 'EMAARDEV'],
+    headline: 'Emaar board proposes higher cash dividend',
+    summary: 'Directors recommended an increased payout after a record year for property sales, pending approval at the annual general meeting.',
+    body: [
+      'Emaar’s board proposed a higher cash dividend for the year, rewarding shareholders after record residential sales and a strong recurring-income performance.',
+      'Emaar Development, the group’s UAE build-to-sell unit, is expected to contribute a substantial share of the distributable profit on the back of accelerated handovers.',
+      'The proposal is subject to shareholder approval at the upcoming annual general meeting.',
+    ],
+  },
+  {
+    id: 'n4', time: '10:18', source: 'The National', category: 'Dividends', sentiment: 'up',
+    symbols: ['ADNOCDRILL'],
+    headline: 'ADNOC Drilling declares dividend',
+    summary: 'The driller confirmed its progressive dividend policy as fleet expansion lifts contracted day-rates.',
+    body: [
+      'ADNOC Drilling reaffirmed its progressive dividend policy, pointing to a growing rig fleet and higher contracted day-rates across its onshore and offshore operations.',
+      'The company continues to expand into unconventional and geothermal services as part of its diversification strategy.',
+    ],
+  },
+  {
+    id: 'n5', time: '09:57', source: 'Reuters', category: 'Banking', sentiment: 'up',
+    symbols: ['EMIRATESNBD', 'DIB', 'CBD'],
+    headline: 'UAE banks rally on rate outlook',
+    summary: 'Lenders advanced as investors positioned for a softer rate path and resilient regional loan growth.',
+    body: [
+      'UAE banking stocks climbed as investors positioned for a gentler interest-rate path while regional loan growth stayed resilient.',
+      'Net interest margins are expected to hold up better than feared, with fee income and buoyant capital-markets activity cushioning the outlook.',
+    ],
+  },
+  {
+    id: 'n6', time: '09:44', source: 'Mubasher', category: 'Infrastructure', sentiment: 'up',
+    symbols: ['SALIK'],
+    headline: 'Salik volumes surge as traffic scheme expands',
+    summary: 'Toll-gate revenue is tracking ahead of guidance after new gates came online across Dubai.',
+    body: [
+      'Salik reported a jump in chargeable trips after new toll gates were activated, pushing revenue ahead of the company’s own guidance.',
+      'Management highlighted dynamic pricing pilots and a broadening network as structural growth drivers.',
+    ],
+  },
+  {
+    id: 'n7', time: '09:30', source: 'Bloomberg', category: 'IPO', sentiment: 'neutral',
+    symbols: [],
+    headline: 'ADX IPO pipeline broadens into industrials',
+    summary: 'Abu Dhabi’s listing pipeline is widening beyond energy and financials into industrial names.',
+    body: [
+      'Abu Dhabi’s exchange said its listing pipeline is broadening into industrial and consumer names, beyond the energy and financial issuers that dominated recent years.',
+      'Bankers expect a steady cadence of mid-cap offerings to deepen secondary-market liquidity.',
+    ],
+  },
+  {
+    id: 'n8', time: '09:12', source: 'Zawya', category: 'Contracts', sentiment: 'up',
+    symbols: ['TABREED'],
+    headline: 'Tabreed wins KSA district-cooling concession',
+    summary: 'The award extends the utility’s connected-capacity pipeline across the Gulf.',
+    body: [
+      'National Central Cooling Company (Tabreed) secured a new district-cooling concession in Saudi Arabia, extending its connected-capacity pipeline across the Gulf.',
+      'The long-term concession adds contracted, inflation-linked cash flows to the utility’s base.',
+    ],
+  },
+  {
+    id: 'n9', time: '08:55', source: 'The National', category: 'Markets', sentiment: 'up',
+    symbols: [],
+    headline: 'Foreign inflows lift Nasdaq Dubai to fresh high',
+    summary: 'Sustained foreign participation pushed the index to a record as liquidity improved.',
+    body: [
+      'Nasdaq Dubai touched a fresh high as sustained foreign inflows and improving liquidity supported valuations across large-cap names.',
+      'Strategists cited index-inclusion flows and a stable dirham peg as supportive factors.',
+    ],
+  },
+  {
+    id: 'n10', time: '10:05', source: 'Mubasher', category: 'Consumer', sentiment: 'down',
+    symbols: ['TALABAT'],
+    headline: 'Talabat eases as competition weighs on margins',
+    summary: 'The food-delivery operator slipped on margin concerns amid intensifying regional competition.',
+    body: [
+      'Talabat shares eased as investors weighed margin pressure from heavier promotional spending and intensifying competition across its core delivery markets.',
+      'Management reiterated that order frequency and subscription uptake remain healthy, and pointed to logistics efficiencies expected to support profitability into next year.',
+    ],
+  },
+  {
+    id: 'n11', time: '09:20', source: 'Bloomberg', category: 'Banking', sentiment: 'up',
+    symbols: ['FAB'],
+    headline: 'First Abu Dhabi Bank posts record quarterly income',
+    summary: 'FAB reported a record quarter on strong loan growth and investment-banking fees.',
+    body: [
+      'First Abu Dhabi Bank, the UAE’s largest lender, posted record quarterly income, helped by robust corporate loan growth and a rebound in investment-banking fees.',
+      'The bank flagged a resilient net-interest margin and strong capital ratios, leaving room for continued shareholder distributions.',
+    ],
+  },
 ]
 
-function NewsPanel() {
+/** Small coloured dot conveying a story's market sentiment. */
+function SentimentDot({ s }: { s: NewsItem['sentiment'] }) {
+  const c = s === 'up' ? 'bg-up' : s === 'down' ? 'bg-down' : 'bg-flat'
+  return <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${c}`} aria-hidden />
+}
+
+/** One clickable headline row in the News feed. */
+function NewsRow({ item, onOpen }: { item: NewsItem; onOpen: (i: NewsItem) => void }) {
   return (
-    <Panel title="News" bodyClassName="overflow-y-auto" noPadding>
-      <ul className="divide-y divide-border-dark">
-        {NEWS.map((n, i) => (
-          <li key={i} className="flex items-center gap-2.5 px-4 py-2 hover:bg-[rgba(255,255,255,0.03)]">
-            <span className="shrink-0 text-[10px] tabular-nums text-content-subtle">{n.time}</span>
-            <span className="truncate text-[12px] text-content" title={n.headline}>{n.headline}</span>
-          </li>
-        ))}
-      </ul>
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(item)}
+        className="group flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-[rgba(0,98,255,0.08)]"
+      >
+        <SentimentDot s={item.sentiment} />
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] text-content-subtle">
+            <span className="tabular-nums">{item.time}</span>
+            <span className="text-border-dark">·</span>
+            <span className="font-medium text-content-muted">{item.source}</span>
+            <span className="ml-auto rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-content-muted">
+              {item.category}
+            </span>
+          </div>
+          <div className="text-[12.5px] font-medium leading-snug text-content transition-colors group-hover:text-white">
+            {item.headline}
+          </div>
+          {item.symbols.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {item.symbols.slice(0, 4).map((sym) => (
+                <span key={sym} className="rounded bg-[rgba(0,98,255,0.12)] px-1.5 py-px text-[10px] font-medium text-[#5b9bff]">
+                  {sym}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <svg
+          className="mt-0.5 shrink-0 text-content-subtle opacity-0 transition-opacity group-hover:opacity-100"
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+    </li>
+  )
+}
+
+/** Small uppercase section divider inside the News feed. */
+function NewsSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border-dark bg-surface/95 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-content-subtle backdrop-blur">
+      {children}
+    </div>
+  )
+}
+
+const NEWS_FILTERS = ['Related', 'All'] as const
+type NewsFilter = (typeof NEWS_FILTERS)[number]
+
+function NewsPanel({ selected, onOpen }: { selected: Symbol; onOpen: (i: NewsItem) => void }) {
+  // Related = only stories tagged with the selected symbol first; All = every
+  // headline regardless of what's selected. Toggle in the panel header.
+  const [filter, setFilter] = useState<NewsFilter>('Related')
+  const related = NEWS.filter((n) => n.symbols.includes(selected.symbolShortName))
+  const rest = NEWS.filter((n) => !n.symbols.includes(selected.symbolShortName))
+  return (
+    <Panel
+      title="News"
+      // Right padding keeps the toggle clear of the panel's hover drag / pop-out controls.
+      actions={<div className="pr-10"><SegmentedTabs tabs={NEWS_FILTERS} value={filter} onChange={setFilter} /></div>}
+      bodyClassName="overflow-y-auto"
+      noPadding
+    >
+      {filter === 'All' ? (
+        <>
+          <NewsSectionLabel>
+            All headlines
+            <span className="ml-auto font-normal normal-case text-content-subtle">{NEWS.length} stories</span>
+          </NewsSectionLabel>
+          <ul className="divide-y divide-border-dark">
+            {NEWS.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
+          </ul>
+        </>
+      ) : (
+        <>
+          {related.length > 0 ? (
+            <>
+              <NewsSectionLabel>
+                <span className="h-1.5 w-1.5 rounded-full bg-action" />
+                Related to {selected.symbolShortName}
+                <span className="ml-auto font-normal normal-case text-content-subtle">{related.length} stories</span>
+              </NewsSectionLabel>
+              <ul className="divide-y divide-border-dark">
+                {related.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
+              </ul>
+              <NewsSectionLabel>More headlines</NewsSectionLabel>
+            </>
+          ) : (
+            <NewsSectionLabel>
+              No stories for {selected.symbolShortName} — latest headlines
+            </NewsSectionLabel>
+          )}
+          <ul className="divide-y divide-border-dark">
+            {rest.map((n) => <NewsRow key={n.id} item={n} onOpen={onOpen} />)}
+          </ul>
+        </>
+      )}
     </Panel>
+  )
+}
+
+/** Right-side slide-over showing the full story + related symbols. */
+function NewsDrawer({
+  item,
+  onClose,
+  onSelectSymbol,
+}: {
+  item: NewsItem | null
+  onClose: () => void
+  onSelectSymbol?: (s: Symbol) => void
+}) {
+  const sentimentTone = item?.sentiment === 'up' ? 'up' : item?.sentiment === 'down' ? 'down' : 'neutral'
+  const sentimentLabel = item?.sentiment === 'up' ? '▲ Positive' : item?.sentiment === 'down' ? '▼ Negative' : '— Neutral'
+  const related = item ? item.symbols.map(bySymbol).filter((s): s is Symbol => Boolean(s)) : []
+  return (
+    <Drawer open={!!item} onClose={onClose} title="Story" width="w-[460px]">
+      {item && (
+        <article className="flex flex-col gap-4 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="info">{item.source}</Badge>
+            <span className="rounded bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-content-muted">{item.category}</span>
+            <Badge tone={sentimentTone}>{sentimentLabel}</Badge>
+            <span className="ml-auto text-[11px] tabular-nums text-content-subtle">Today · {item.time}</span>
+          </div>
+
+          <h2 className="text-[19px] font-semibold leading-snug text-content">{item.headline}</h2>
+          <p className="text-[13px] font-medium leading-relaxed text-content-muted">{item.summary}</p>
+
+          <div className="h-px bg-border-dark" />
+
+          <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-content-muted">
+            {item.body.map((p, i) => <p key={i}>{p}</p>)}
+          </div>
+
+          {related.length > 0 && (
+            <div className="mt-1 flex flex-col gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Related symbols</div>
+              <ul className="flex flex-col gap-1.5">
+                {related.map((s) => {
+                  const tone = s.changePct > 0 ? 'text-up' : s.changePct < 0 ? 'text-down' : 'text-flat'
+                  return (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => { onSelectSymbol?.(s); onClose() }}
+                        className="flex w-full items-center gap-2.5 rounded-lg border border-border-dark bg-[#15171a] px-3 py-2 text-left transition-colors hover:border-action/50 hover:bg-[rgba(0,98,255,0.08)]"
+                      >
+                        <span className="w-20 shrink-0 text-[12px] font-semibold text-content">{s.symbolShortName}</span>
+                        <span className="flex-1 truncate text-[11px] text-content-muted" title={s.symbolName}>{s.symbolName}</span>
+                        <span className="shrink-0 tabular-nums text-[12px] text-content">{fmtPrice(s.lastPrice)}</span>
+                        <span className={`w-14 shrink-0 text-right tabular-nums text-[12px] ${tone}`}>{fmtPct(s.changePct)}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </article>
+      )}
+    </Drawer>
   )
 }
 
@@ -719,8 +1100,8 @@ function TimeSalesPanel({ short }: { short: string }) {
 }
 
 // ── Watchlist (from the MSN dashboard) ───────────────────────────────────────
-function WatchlistPanel({ selected, onSelect, onTrade }: { selected: Symbol; onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void }) {
-  const rows = useLiveSymbols(WATCHLIST)
+function WatchlistPanel({ selected, onSelect, onTrade, symbols }: { selected: Symbol; onSelect: (s: Symbol) => void; onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; symbols: Symbol[] }) {
+  const rows = useLiveSymbols(symbols)
   return (
     <Panel title="Watchlist" bodyClassName="overflow-y-auto" noPadding>
       <ul className="divide-y divide-border-dark">
@@ -760,24 +1141,31 @@ function Header({
   onSelect,
   resetLayout,
   canReset,
+  market,
+  symbols,
 }: {
   selected: Symbol
   onSelect: (s: Symbol) => void
   resetLayout: () => void
   canReset: boolean
+  market: MarketCode
+  symbols: Symbol[]
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const { status, quotes } = useLiveData()
+  // DFM has a genuine Yahoo feed; ADX / Nasdaq are always simulated.
+  const isLive = marketHasLiveFeed(market) && status === 'live' && quotes.size > 0
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = q
-      ? FULL_MARKET.filter(
+      ? symbols.filter(
           (s) => s.symbolShortName.toLowerCase().includes(q) || s.symbolName.toLowerCase().includes(q),
         )
-      : FULL_MARKET
+      : symbols
     return list.slice(0, 12)
-  }, [query])
+  }, [query, symbols])
 
   const pick = (s: Symbol) => {
     onSelect(s)
@@ -831,7 +1219,7 @@ function Header({
           </ul>
         )}
       </div>
-      <Badge tone="info">DFM</Badge>
+      <Badge tone="info" className="uppercase">{market}</Badge>
       <div className="ml-auto flex items-center gap-4 text-[12px]">
         <span className="hidden items-center gap-1 text-content-subtle lg:flex" title="Drag a panel's grip to rearrange · drag its right edge to resize (double-click for full width)">
           <span className="text-[13px] leading-none">⠿</span>
@@ -840,10 +1228,17 @@ function Header({
         <Button variant="ghost" size="sm" onClick={resetLayout} disabled={!canReset} title="Restore the default panel layout">
           Reset layout
         </Button>
-        <span className="flex items-center gap-1.5 text-up">
-          <span className="inline-block h-2 w-2 rounded-full bg-up shadow-[0_0_6px_#2fd07a]" />
-          Live
-        </span>
+        {isLive ? (
+          <span className="flex items-center gap-1.5 text-up" title="Real-time DFM quotes via Yahoo Finance">
+            <span className="inline-block h-2 w-2 rounded-full bg-up shadow-[0_0_6px_#2fd07a]" />
+            Live
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-content-muted" title={marketHasLiveFeed(market) ? 'No live DFM feed reachable — showing simulated data' : `${MARKET_NAMES[market]} has no free live feed — data is simulated`}>
+            <span className="inline-block h-2 w-2 rounded-full bg-white/40" />
+            Simulated
+          </span>
+        )}
         <span className="font-medium text-content">{selected.symbolShortName}</span>
       </div>
     </header>
@@ -894,19 +1289,27 @@ interface PanelDef {
   render: () => ReactNode
 }
 
-const LAYOUT_KEY = 'fab-terminal-layout-v2'
+const LAYOUT_KEY = 'fab-terminal-layout-v4'
 
-/** Min / max column span a panel may occupy. */
-const MIN_SPAN = 3
+/** Min / max column span a panel may occupy. Min 2/12 lets panels pack tighter. */
+const MIN_SPAN = 2
 const MAX_SPAN = 12
 
 const clampSpan = (n: number) => Math.max(MIN_SPAN, Math.min(MAX_SPAN, n))
 
-/** Default order — matches the original fixed layout exactly. */
+/**
+ * Default order. News is prioritised into the top row (right of the hero) so
+ * it sits in the main viewport instead of being buried at the bottom. Every row
+ * sums to exactly 12 columns so the grid tiles with no empty gaps:
+ *   row1  indices(3) + hero(6) + news(3)        = 12
+ *   row2  breadth(4) + sector(4) + movers(4)    = 12
+ *   row3  orderbook(3) + watchlist(3) + mostactive(6) = 12
+ *   row4  timesales(12)                          = 12
+ */
 const DEFAULT_ORDER: PanelId[] = [
-  'indices', 'hero', 'orderbook',
+  'indices', 'hero', 'news',
   'breadth', 'sector', 'movers',
-  'watchlist', 'mostactive', 'news',
+  'orderbook', 'watchlist', 'mostactive',
   'timesales',
 ]
 
@@ -1148,7 +1551,7 @@ const HOTKEYS: { key: string; label: string; hint: string; action: HotkeyAction 
   { key: 'F2', label: 'Buy', hint: 'Open a buy ticket for the selected symbol', action: { kind: 'buy' } },
   { key: 'F3', label: 'Sell', hint: 'Open a sell ticket for the selected symbol', action: { kind: 'sell' } },
   { key: 'F4', label: 'Search', hint: 'Jump to the symbol search box', action: { kind: 'search' } },
-  { key: 'F5', label: 'Broker Flow', hint: 'Open the Broker Flow as its own window', action: { kind: 'broker' } },
+  { key: 'F5', label: 'Order Placement', hint: 'Open Order Placement as its own window', action: { kind: 'broker' } },
   { key: 'F6', label: 'Movers', hint: 'Jump to the Top Movers panel', action: { kind: 'panel', panel: 'movers' } },
   { key: 'F7', label: 'Order Book', hint: 'Jump to the Order Book panel', action: { kind: 'panel', panel: 'orderbook' } },
   { key: 'F8', label: 'News', hint: 'Jump to the News panel', action: { kind: 'panel', panel: 'news' } },
@@ -1228,25 +1631,30 @@ export const PANEL_TITLES: Record<PanelId, string> = {
  * order ticket, filling its parent container. Shared by the full-window
  * `DetachedPanel` and by the Workspace board (a card in the grid).
  */
-export function GraphPanelBody({ id }: { id: string }) {
+export function GraphPanelBody({ id, market = 'DFM' }: { id: string; market?: MarketCode }) {
   const tick = useLiveTick()
-  const [selected, setSelected] = useState<Symbol>(() => FULL_MARKET.find((s) => s.symbolShortName === 'EMAAR')!)
+  const [selected, setSelected] = useState<Symbol>(() => defaultSymbolFor(market))
   // The detached window has no parent terminal to host the order ticket, so it
   // carries its own — this makes Buy/Sell work on another monitor.
   const [trade, setTrade] = useState<{ open: boolean; side: 'buy' | 'sell'; symbol: Symbol | null }>({ open: false, side: 'buy', symbol: null })
   const onTrade = (symbol: Symbol, side: 'buy' | 'sell') => setTrade({ open: true, side, symbol })
+  const [newsItem, setNewsItem] = useState<NewsItem | null>(null)
+
+  const symbols = useMemo(() => symbolsForMarket(market), [market])
+  const indices = useMemo(() => indicesForMarket(market), [market])
+  const watchRows = useMemo(() => watchlistForMarket(market), [market])
 
   const body = (): ReactNode => {
     switch (id as PanelId) {
-      case 'indices': return <IndicesPanel tick={tick} />
+      case 'indices': return <IndicesPanel tick={tick} indices={indices} />
       case 'hero': return <HeroPanel sym={selected} onTrade={onTrade} tick={tick} />
       case 'orderbook': return <OrderBookPanel short={selected.symbolShortName} tick={tick} />
-      case 'breadth': return <BreadthPanel tick={tick} />
-      case 'sector': return <SectorPanel />
-      case 'movers': return <MoversPanel onSelect={setSelected} onTrade={onTrade} />
-      case 'watchlist': return <WatchlistPanel selected={selected} onSelect={setSelected} onTrade={onTrade} />
-      case 'mostactive': return <MostActivePanel onSelect={setSelected} onTrade={onTrade} />
-      case 'news': return <NewsPanel />
+      case 'breadth': return <BreadthPanel tick={tick} symbols={symbols} />
+      case 'sector': return <SectorPanel symbols={symbols} />
+      case 'movers': return <MoversPanel onSelect={setSelected} onTrade={onTrade} symbols={symbols} />
+      case 'watchlist': return <WatchlistPanel selected={selected} onSelect={setSelected} onTrade={onTrade} symbols={watchRows} />
+      case 'mostactive': return <MostActivePanel onSelect={setSelected} onTrade={onTrade} symbols={symbols} />
+      case 'news': return <NewsPanel selected={selected} onOpen={setNewsItem} />
       case 'timesales': return <TimeSalesPanel short={selected.symbolShortName} />
       default: return <div className="p-6 text-content">Unknown panel: {id}</div>
     }
@@ -1262,6 +1670,7 @@ export function GraphPanelBody({ id }: { id: string }) {
         onSideChange={(side) => setTrade((t) => ({ ...t, side }))}
         onClose={() => setTrade((t) => ({ ...t, open: false }))}
       />
+      <NewsDrawer item={newsItem} onClose={() => setNewsItem(null)} onSelectSymbol={setSelected} />
     </div>
   )
 }
@@ -1279,9 +1688,16 @@ export function DetachedPanel({ id }: { id: string }) {
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
-export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; onBrokerFlow?: () => void }) {
-  const [selected, setSelected] = useState<Symbol>(() => FULL_MARKET.find((s) => s.symbolShortName === 'EMAAR')!)
+export default function FabTerminal({ onTrade, onBrokerFlow, market = 'DFM' }: { onTrade: (symbol: Symbol, side: 'buy' | 'sell') => void; onBrokerFlow?: () => void; market?: MarketCode }) {
+  const [selected, setSelected] = useState<Symbol>(() => defaultSymbolFor(market))
+  const [newsItem, setNewsItem] = useState<NewsItem | null>(null)
   const tick = useLiveTick()
+
+  // Market-scoped datasets — every symbol-driven panel reads these so switching
+  // market (via the tab / top-bar dropdown) genuinely changes the terminal.
+  const marketSymbolList = useMemo(() => symbolsForMarket(market), [market])
+  const marketIndexList = useMemo(() => indicesForMarket(market), [market])
+  const marketWatchRows = useMemo(() => watchlistForMarket(market), [market])
 
   const initialLayout = useMemo(() => loadLayout(), [])
   const [order, setOrder] = useState<PanelId[]>(initialLayout.order)
@@ -1314,18 +1730,18 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
   // Panel registry — keeps each panel's existing props/behaviour identical.
   const panels: Record<PanelId, PanelDef> = useMemo(
     () => ({
-      indices: { id: 'indices', defaultSpan: 3, render: () => <IndicesPanel tick={tick} /> },
+      indices: { id: 'indices', defaultSpan: 3, render: () => <IndicesPanel tick={tick} indices={marketIndexList} /> },
       hero: { id: 'hero', defaultSpan: 6, render: () => <HeroPanel sym={selected} onTrade={onTrade} tick={tick} /> },
       orderbook: { id: 'orderbook', defaultSpan: 3, render: () => <OrderBookPanel short={selected.symbolShortName} tick={tick} /> },
-      breadth: { id: 'breadth', defaultSpan: 4, render: () => <BreadthPanel tick={tick} /> },
-      sector: { id: 'sector', defaultSpan: 4, render: () => <SectorPanel /> },
-      movers: { id: 'movers', defaultSpan: 4, render: () => <MoversPanel onSelect={setSelected} onTrade={onTrade} /> },
-      watchlist: { id: 'watchlist', defaultSpan: 3, render: () => <WatchlistPanel selected={selected} onSelect={setSelected} onTrade={onTrade} /> },
-      mostactive: { id: 'mostactive', defaultSpan: 6, render: () => <MostActivePanel onSelect={setSelected} onTrade={onTrade} /> },
-      news: { id: 'news', defaultSpan: 3, render: () => <NewsPanel /> },
+      breadth: { id: 'breadth', defaultSpan: 4, render: () => <BreadthPanel tick={tick} symbols={marketSymbolList} /> },
+      sector: { id: 'sector', defaultSpan: 4, render: () => <SectorPanel symbols={marketSymbolList} /> },
+      movers: { id: 'movers', defaultSpan: 4, render: () => <MoversPanel onSelect={setSelected} onTrade={onTrade} symbols={marketSymbolList} /> },
+      watchlist: { id: 'watchlist', defaultSpan: 3, render: () => <WatchlistPanel selected={selected} onSelect={setSelected} onTrade={onTrade} symbols={marketWatchRows} /> },
+      mostactive: { id: 'mostactive', defaultSpan: 6, render: () => <MostActivePanel onSelect={setSelected} onTrade={onTrade} symbols={marketSymbolList} /> },
+      news: { id: 'news', defaultSpan: 3, render: () => <NewsPanel selected={selected} onOpen={setNewsItem} /> },
       timesales: { id: 'timesales', defaultSpan: 12, render: () => <TimeSalesPanel short={selected.symbolShortName} /> },
     }),
-    [selected, onTrade, tick],
+    [selected, onTrade, tick, marketSymbolList, marketIndexList, marketWatchRows],
   )
 
   const handleDrop = (targetId: PanelId) => {
@@ -1409,7 +1825,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
-      <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} />
+      <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} />
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid auto-rows-auto grid-flow-dense grid-cols-12 gap-3">
           {order.map((id) => {
@@ -1442,6 +1858,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow }: { onTrade: (symbo
       <HotkeyBar onTrigger={runHotkey} />
       <TickerTape tick={tick} />
       <HotkeyHelp open={helpOpen} onClose={() => setHelpOpen(false)} onTrigger={runHotkey} />
+      <NewsDrawer item={newsItem} onClose={() => setNewsItem(null)} onSelectSymbol={setSelected} />
     </div>
   )
 }

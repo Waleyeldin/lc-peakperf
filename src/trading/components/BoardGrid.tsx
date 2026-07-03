@@ -29,7 +29,7 @@ export const BOARD_TITLES: Record<string, string> = {
   'd-indices': 'Market Indices',
   'd-market': 'Market Table',
   'd-right': 'Watchlist',
-  'broker-flow': 'Broker Trade Flow',
+  'broker-flow': 'Order Placement',
 }
 
 /** Wraps a trading panel so its Buy/Sell open a ticket inside this window. */
@@ -48,7 +48,8 @@ function panelBody(id: string): ReactNode {
     case 'd-indices': return <MarketIndices />
     case 'd-market': return <TradeBody render={(onTrade) => <FullMarket visibleColumns={defaultCols} onOpenColumns={noop} onTrade={onTrade} />} />
     case 'd-right': return <TradeBody render={(onTrade) => <RightPanel onTrade={onTrade} />} />
-    case 'broker-flow': return <BrokerDesk />
+    case 'broker-flow': return <BrokerDesk compact />
+
     // Any other id is a Graph-look panel (indices, movers, news, …); render it
     // with FabTerminal's standalone panel body so both looks share the board.
     default: return <GraphPanelBody id={id} />
@@ -63,19 +64,19 @@ function cardTitle(id: string): string {
 // ── Grid geometry ──────────────────────────────────────────────────────────
 const COLS = 12
 const ROW_H = 30
-// New cards drop in HALF board width so two sit side-by-side per row (drag the
-// right edge to make any card full-width). Half-width is the widest that still
-// lets you place cards next to each other on the 12-column grid.
-const DEFAULT_W = 6
-const DEFAULT_H = 15
+// New cards drop in at FULL board width and a generous height so a rich panel
+// (e.g. Quote — the hero chart + fields grid) has room instead of overflowing.
+// Drag the right/bottom edges to shrink or place cards side-by-side.
+const DEFAULT_W = 12
+const DEFAULT_H = 22
 
 /** Build a layout item for a card that has no saved position yet. Placing it at
  *  the far bottom lets the grid's vertical compaction pack it into the first
  *  free slot. */
-function freshItem(id: string, index: number): LayoutItem {
+function freshItem(id: string): LayoutItem {
   return {
     i: id,
-    x: (index * DEFAULT_W) % COLS,
+    x: 0,
     y: Infinity, // drop at the bottom; compaction pulls it up
     w: DEFAULT_W,
     h: DEFAULT_H,
@@ -85,13 +86,13 @@ function freshItem(id: string, index: number): LayoutItem {
 }
 
 export default function BoardGrid({ ids, onRemove }: { ids: string[]; onRemove: (id: string) => void }) {
-  const [layout, setLayout] = useState<LayoutItem[]>(() => ids.map((id, i) => freshItem(id, i)))
+  const [layout, setLayout] = useState<LayoutItem[]>(() => ids.map((id) => freshItem(id)))
 
   // Keep the layout in sync with the id list: add items for new ids, drop
   // items whose id was removed. Existing positions are preserved.
   const currentLayout = useMemo(() => {
     const byId = new Map(layout.map((l) => [l.i, l]))
-    return ids.map((id, i) => byId.get(id) ?? freshItem(id, i))
+    return ids.map((id) => byId.get(id) ?? freshItem(id))
   }, [ids, layout])
 
   return (
@@ -110,29 +111,63 @@ export default function BoardGrid({ ids, onRemove }: { ids: string[]; onRemove: 
       isBounded
       onLayoutChange={(l: Layout) => setLayout([...l])}
     >
-      {ids.map((id) => (
-        <div key={id} className="overflow-hidden rounded-xl border border-border-dark bg-surface">
-          <header className="board-card-handle flex cursor-move items-center justify-between border-b border-border-dark px-3 py-1.5">
-            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-content-muted"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-              {cardTitle(id)}
-            </span>
-            <button
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => onRemove(id)}
-              title="Remove from board"
-              aria-label="Remove from board"
-              className="rounded p-1 text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          </header>
-          {/* Stretch whatever panel this card holds to fill the card (width +
-              height) and scroll if it overflows, so resizing actually resizes
-              the content — not just the frame. */}
-          <div className="h-[calc(100%-34px)] w-full overflow-auto [&>*]:min-h-full [&>*]:w-full">{panelBody(id)}</div>
-        </div>
-      ))}
+      {ids.map((id) => {
+        // Graph panels already render their own titled Panel box. Wrapping them
+        // in the card's header + border too would produce a "box inside a box"
+        // (e.g. a "News" frame inside a "News" frame). For those, skip the card
+        // chrome and use small floating drag/remove controls instead.
+        const selfFramed = id in PANEL_TITLES
+        if (selfFramed) {
+          return (
+            <div key={id} className="group relative h-full overflow-hidden rounded-xl">
+              {panelBody(id)}
+              <div className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-0.5 rounded-md border border-border-dark bg-surface/95 px-0.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                <button
+                  type="button"
+                  title="Drag to move"
+                  aria-label="Drag to move"
+                  className="board-card-handle flex h-5 w-5 cursor-move items-center justify-center rounded text-[13px] leading-none text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
+                >
+                  ⠿
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => onRemove(id)}
+                  title="Remove from board"
+                  aria-label="Remove from board"
+                  className="flex h-5 w-5 items-center justify-center rounded text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              </div>
+            </div>
+          )
+        }
+        return (
+          <div key={id} className="overflow-hidden rounded-xl border border-border-dark bg-surface">
+            <header className="board-card-handle flex cursor-move items-center justify-between border-b border-border-dark px-3 py-1.5">
+              <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-content-muted"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+                {cardTitle(id)}
+              </span>
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onRemove(id)}
+                title="Remove from board"
+                aria-label="Remove from board"
+                className="rounded p-1 text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </header>
+            {/* Stretch whatever panel this card holds to fill the card (width +
+                height) and scroll if it overflows, so resizing actually resizes
+                the content — not just the frame. */}
+            <div className="h-[calc(100%-34px)] w-full overflow-auto [&>*]:min-h-full [&>*]:w-full">{panelBody(id)}</div>
+          </div>
+        )
+      })}
     </ResponsiveGrid>
   )
 }

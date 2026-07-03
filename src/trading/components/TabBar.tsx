@@ -14,6 +14,9 @@ interface TabBarProps {
   onTogglePin: (id: string) => void
   onOpenWindow: (id: string) => void
   onNew: () => void
+  /** When provided, the "+" opens a picker of these options instead of onNew(). */
+  newOptions?: { key: string; label: string; hint?: string }[]
+  onNewOption?: (key: string) => void
 }
 
 /* ── Inline SVG icons ─────────────────────────────────────────── */
@@ -132,19 +135,22 @@ function TabMenu({
 /* ── TabBar ───────────────────────────────────────────────────── */
 
 export default function TabBar(props: TabBarProps) {
-  const { tabs, activeId, onSelect, onClose, onTogglePin, onOpenWindow, onNew } = props
+  const { tabs, activeId, onSelect, onClose, onTogglePin, onOpenWindow, onNew, newOptions, onNewOption } = props
   const [menuFor, setMenuFor] = useState<{ id: string; x: number; y: number } | null>(null)
   const [collapsed, setCollapsed] = useState(false)
+  // New-tab picker uses fixed coords (like the tab context menu) so it escapes
+  // the tab bar's overflow container instead of being clipped into a scroll strip.
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null)
 
-  // Close menu on Escape
+  // Close any open menu on Escape
   useEffect(() => {
-    if (!menuFor) return
+    if (!menuFor && !newMenu) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuFor(null)
+      if (e.key === 'Escape') { setMenuFor(null); setNewMenu(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [menuFor])
+  }, [menuFor, newMenu])
 
   const pinned = tabs.filter((t) => t.pinned)
   const unpinned = tabs.filter((t) => !t.pinned)
@@ -266,15 +272,44 @@ export default function TabBar(props: TabBarProps) {
         )
       })}
 
-      {/* ── New tab ───────────────────────────────────────────── */}
+      {/* ── New tab (optionally a market picker) ──────────────── */}
       <button
         type="button"
         aria-label="New tab"
-        onClick={onNew}
+        title={newOptions ? 'New market tab' : 'New tab'}
+        onClick={(e) => {
+          if (!newOptions) { onNew(); return }
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+          setNewMenu((cur) => (cur ? null : { x: Math.min(r.left, window.innerWidth - 240), y: r.bottom + 4 }))
+        }}
         className="mb-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-content-muted hover:bg-white/10"
       >
         <PlusIcon className="size-4" />
       </button>
+
+      {/* New-tab picker — fixed to the viewport so it isn't clipped by the bar. */}
+      {newOptions && newMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setNewMenu(null)} />
+          <div
+            className="fixed z-50 min-w-56 rounded-lg border border-border-dark bg-surface py-1 shadow-2xl"
+            style={{ left: newMenu.x, top: newMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Open market tab</div>
+            {newOptions.map((o) => (
+              <button
+                key={o.key}
+                onClick={() => { onNewOption?.(o.key); setNewMenu(null) }}
+                className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left hover:bg-[rgba(255,255,255,0.06)]"
+              >
+                <span className="text-[13px] font-medium text-content">{o.label}</span>
+                {o.hint && <span className="text-[11px] text-content-muted">{o.hint}</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

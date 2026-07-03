@@ -62,7 +62,17 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'LC PeakPerf v__VERSION__'
-          releaseBody: 'Download the installer for your platform below.'
+          releaseBody: |
+            **LC PeakPerf v__VERSION__**
+
+            Highlights:
+            - Graph view: news prioritised + contextual + clickable; responsive, interactive price chart; gap-free layout.
+            - Markets: DFM (real-time) / ADX (simulated) selector and market-bound tabs.
+            - Workspace board: full-size single-frame panels, resizable dock, dock-conflict prompt.
+            - Order Placement (was "Broker Flow"): CIF autocomplete, browser-style tabs with pinning, VIP toggle.
+            - App: clean scrollbars and an in-app "Check for updates".
+
+            See CHANGELOG.md for the full notes. Download the installer for your platform below.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
