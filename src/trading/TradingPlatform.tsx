@@ -19,13 +19,13 @@ import Placeholder from './components/Placeholder'
 import FabTerminal from './components/FabTerminal'
 import BrokerDesk from './components/BrokerDesk'
 import OrderPlacementAI from './components/OrderPlacementAI'
+import UpdaterModal from './components/UpdaterModal'
 import TabBar from './components/TabBar'
 import BoardGrid from './components/BoardGrid'
 import { listen } from '@tauri-apps/api/event'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { getVersion } from '@tauri-apps/api/app'
 import { sendToBoard, closeBoard, openDetachedPanel } from './popout'
-import { checkForUpdates } from '../updater'
 import { useLiveData } from './liveData'
 import FloatingToolbar from './components/FloatingToolbar'
 
@@ -451,7 +451,7 @@ function LiveStatusPill({ market }: { market?: MarketCode }) {
 }
 
 /** User chip with an app menu — shows the version and a manual update check. */
-function UserMenu() {
+function UserMenu({ onCheckUpdates }: { onCheckUpdates: () => void }) {
   const [open, setOpen] = useState(false)
   const [version, setVersion] = useState('')
   const navigate = useNavigate()
@@ -482,7 +482,7 @@ function UserMenu() {
           <div className="px-3 py-1.5 text-[11px] text-content-muted">Signed in as <span className="font-medium text-content">broker08</span></div>
           <div className="my-1 h-px bg-border-dark" />
           <button
-            onMouseDown={(e) => { e.preventDefault(); setOpen(false); void checkForUpdates({ silent: false }) }}
+            onMouseDown={(e) => { e.preventDefault(); setOpen(false); onCheckUpdates() }}
             className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-[rgba(255,255,255,0.06)]"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
@@ -531,6 +531,7 @@ export default function TradingPlatform() {
   const [trade, setTrade] = useState<{ open: boolean; side: Side; symbol: Symbol | null }>({ open: false, side: 'buy', symbol: null })
 
   const openTrade = (symbol: Symbol, side: Side) => setTrade({ open: true, side, symbol })
+  const [updaterOpen, setUpdaterOpen] = useState(false)
 
   // ── Document tabs ──────────────────────────────────────────────
   const navigate = useNavigate()
@@ -817,7 +818,7 @@ export default function TradingPlatform() {
             </span>
             <span className="hidden text-[12px] text-white/50 lg:inline">BANKFAB0335R1</span>
           </div>
-          <UserMenu />
+          <UserMenu onCheckUpdates={() => setUpdaterOpen(true)} />
         </div>
       </header>
 
@@ -1045,6 +1046,8 @@ export default function TradingPlatform() {
         onSideChange={(side) => setTrade((t) => ({ ...t, side }))}
         onClose={() => setTrade((t) => ({ ...t, open: false }))}
       />
+
+      <UpdaterModal open={updaterOpen} onClose={() => setUpdaterOpen(false)} />
 
       {/* Docking a second board while one is already docked — replace or merge? */}
       {pendingDock && (

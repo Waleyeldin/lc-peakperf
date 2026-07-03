@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.0.1
+
+- **In-app updater** — a branded "Check for updates" dialog (user menu) that shows the current version, checks GitHub, displays the new version + notes, and **downloads, installs and relaunches inside the app** with a progress bar — replacing the native OS prompts.
+- Releases now **publish automatically**, so a pushed update is immediately available to installed apps.
+
 ## v3.0.0
 
 ### Rebrand & sign-in

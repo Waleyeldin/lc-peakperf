@@ -74,6 +74,6 @@ jobs:
             - App — clean scrollbars, wider windows, in-app "Check for updates".
 
             See CHANGELOG.md for the full notes. Download the installer for your platform below.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
