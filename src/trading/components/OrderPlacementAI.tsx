@@ -33,6 +33,23 @@ function Sparkle({ className = '' }: { className?: string }) {
   )
 }
 
+// Streams text character by character when animate=true, like a live transcript.
+// Replays at ~120 chars/sec — fast enough to feel real, slow enough to read.
+function TypedText({ text, animate }: { text: string; animate: boolean }) {
+  const [shown, setShown] = useState(animate ? 0 : text.length)
+  useEffect(() => {
+    if (!animate || shown >= text.length) return
+    const id = setInterval(() => setShown((n) => Math.min(n + 4, text.length)), 33)
+    return () => clearInterval(id)
+  }, [animate, text]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <>
+      {text.slice(0, shown)}
+      {shown < text.length && <span className="ml-px inline-block h-[0.85em] w-[1.5px] translate-y-[0.05em] animate-pulse bg-current opacity-60" />}
+    </>
+  )
+}
+
 /**
  * Parse a free-text / dictated instruction that may contain SEVERAL orders,
  * e.g. "buy 100k Emaar, 50k DIB and sell 30k SALIK". Splits into segments and
@@ -424,6 +441,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const addLine = (side: Side) => setOrders((os) => [...os, makeLine(side, FULL_MARKET.find((s) => s.lastPrice > 0)!.symbolShortName, 10_000)])
   const [transcript, setTranscript] = useState<{ id: number; speaker: 'Broker' | 'Client' | 'AI'; text: string; time: string }[]>(() => snap?.transcript ?? [])
   const turnId = useRef((snap?.transcript ?? []).reduce((m, t) => Math.max(m, t.id), 0))
+  const freshTurnIds = useRef<Set<number>>(new Set()) // turns added this session (should animate)
   const sessionRef = useRef(0) // bumps on reset / new call so stale scripted turns are dropped
 
   // Save a snapshot only when docking, so the docked copy restores exactly what
@@ -436,8 +454,11 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   }
 
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const addTurn = (speaker: 'Broker' | 'Client' | 'AI', text: string) =>
-    setTranscript((t) => [...t, { id: ++turnId.current, speaker, text, time: now() }])
+  const addTurn = (speaker: 'Broker' | 'Client' | 'AI', text: string) => {
+    const id = ++turnId.current
+    freshTurnIds.current.add(id)
+    setTranscript((t) => [...t, { id, speaker, text, time: now() }])
+  }
   // Play a scripted exchange, one turn every ~0.9s, so the call feels live. A
   // turn may carry a side-effect (3rd item) that fires when that turn appears —
   // used to reveal the order basket in step with the conversation.
@@ -890,20 +911,25 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 <div className="py-4 text-center text-[11px] text-content-muted">Connecting call…</div>
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {transcript.map((t) => (
-                    <li key={t.id} className={t.speaker === 'AI' ? 'flex justify-center' : t.speaker === 'Broker' ? 'flex justify-end' : 'flex justify-start'}>
-                      {t.speaker === 'AI' ? (
-                        <span className="flex items-center gap-1.5 rounded-full bg-[rgba(0,98,255,0.1)] px-2.5 py-1 text-[11px] text-[#9cc0ff]"><Sparkle /> {t.text}</span>
-                      ) : (
-                        <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-[12px] ${t.speaker === 'Broker' ? 'bg-[rgba(0,98,255,0.16)] text-content' : 'bg-[#1f2226] text-content'}`}>
-                          <div className="mb-0.5 flex items-center gap-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
-                            <span className="font-semibold">{t.speaker}</span><span className="tabular-nums normal-case">{t.time}</span>
+                  {transcript.map((t) => {
+                    const animate = freshTurnIds.current.has(t.id)
+                    return (
+                      <li key={t.id} className={t.speaker === 'AI' ? 'flex justify-center' : t.speaker === 'Broker' ? 'flex justify-end' : 'flex justify-start'}>
+                        {t.speaker === 'AI' ? (
+                          <span className="flex items-center gap-1.5 rounded-full bg-[rgba(0,98,255,0.1)] px-2.5 py-1 text-[11px] text-[#9cc0ff]">
+                            <Sparkle /><TypedText text={t.text} animate={animate} />
+                          </span>
+                        ) : (
+                          <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-[12px] ${t.speaker === 'Broker' ? 'bg-[rgba(0,98,255,0.16)] text-content' : 'bg-[#1f2226] text-content'}`}>
+                            <div className="mb-0.5 flex items-center gap-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
+                              <span className="font-semibold">{t.speaker}</span><span className="tabular-nums normal-case">{t.time}</span>
+                            </div>
+                            <TypedText text={t.text} animate={animate} />
                           </div>
-                          {t.text}
-                        </div>
-                      )}
-                    </li>
-                  ))}
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

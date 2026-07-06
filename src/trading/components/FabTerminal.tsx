@@ -1311,7 +1311,7 @@ interface PanelDef {
   render: () => ReactNode
 }
 
-const LAYOUT_KEY = 'fab-terminal-layout-v7'
+const LAYOUT_KEY = 'fab-terminal-layout-v8'
 const GRID_COLS = 12
 const GRID_ROW_H = 80
 
@@ -1334,7 +1334,7 @@ const DEFAULT_GRID_LAYOUT: RGLLayoutItem[] = [
   { i: 'breadth',    x: 0,  y: 8,  w: 6,  h: 4,  minW: 2, minH: 2 },
   { i: 'movers',     x: 6,  y: 8,  w: 3,  h: 4,  minW: 2, minH: 2 },
   { i: 'orderbook',  x: 9,  y: 8,  w: 3,  h: 4,  minW: 2, minH: 2 },
-  { i: 'watchlist',  x: 0,  y: 12, w: 3,  h: 5,  minW: 2, minH: 2 },
+  { i: 'watchlist',  x: 0,  y: 12, w: 3,  h: 6,  minW: 2, minH: 2 },
   { i: 'mostactive', x: 3,  y: 12, w: 9,  h: 6,  minW: 2, minH: 2 },
   { i: 'timesales',  x: 0,  y: 18, w: 12, h: 3,  minW: 2, minH: 2 },
 ]

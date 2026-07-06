@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.2.9
+
+- **Live transcript streams letter-by-letter** — every new message from Broker, Client or AI in the Order Placement AI call transcript now appears character-by-character (like ChatGPT streaming), with a blinking cursor while it types. Messages already loaded from a saved session show instantly.
+- **Watchlist aligned with Most Active** — Watchlist is now the same height as Most Active (both 6 rows), removing the 1-row gap between them in the default Graph layout. Layout key bumped to v8 so the corrected default applies.
+
 ## v3.2.8
 
 - **Caller verification animation in Order Placement AI** — selecting a caller now plays a 2.5-second verification sequence before the profile appears: a caller-ID sweep bar fills instantly to confirm the number match, then a 9-bar voice waveform animates like a Siri/Claude voice visualiser while the voiceprint is analysed (bars pulse up and down at staggered speeds), and finally the bars collapse green with the match percentage before the full profile loads.
