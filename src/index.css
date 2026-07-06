@@ -230,6 +230,16 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cline x1='1' y1='7' x2='7' y2='1' stroke='%230062ff' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='4' y1='9' x2='9' y2='4' stroke='%230062ff' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
+/* ── Order Placement AI — caller-ID sweep + voice-match waveform ──────── */
+@keyframes callerSweep {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+@keyframes voiceBarAnim {
+  from { transform: scaleY(0.1); }
+  to   { transform: scaleY(1); }
+}
+
 /* Drop-target placeholder in the app accent. */
 .react-grid-item.react-grid-placeholder {
   background: #0062ff !important;

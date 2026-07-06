@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.2.8
+
+- **Caller verification animation in Order Placement AI** — selecting a caller now plays a 2.5-second verification sequence before the profile appears: a caller-ID sweep bar fills instantly to confirm the number match, then a 9-bar voice waveform animates like a Siri/Claude voice visualiser while the voiceprint is analysed (bars pulse up and down at staggered speeds), and finally the bars collapse green with the match percentage before the full profile loads.
+
 ## v3.2.7
 
 - **Fixed blank scroll space — actual root cause found** — the resize handles on each panel (n/s/e/w edges) were being rotated 45°–135° by the default react-resizable CSS. A 14px-tall handle that's 1200px wide, rotated 45°, has an 850px bounding box that sticks far below the grid. This inflated the grid's scroll height from ~1944px to ~2515px — the ~570px difference was the blank space. Fixed by forcing `transform: none` and correct positioning with `!important` (needed because the library CSS loads after our styles in Vite's bundle).

@@ -187,6 +187,99 @@ function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string)
   )
 }
 
+// ── Caller-ID + voiceprint verification animation ────────────────────────────
+const VOICE_BARS = [
+  { dur: '0.55s', delay: '0.00s' },
+  { dur: '0.38s', delay: '0.07s' },
+  { dur: '0.48s', delay: '0.13s' },
+  { dur: '0.62s', delay: '0.04s' },
+  { dur: '0.42s', delay: '0.18s' },
+  { dur: '0.52s', delay: '0.09s' },
+  { dur: '0.45s', delay: '0.15s' },
+  { dur: '0.58s', delay: '0.02s' },
+  { dur: '0.40s', delay: '0.11s' },
+]
+
+function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
+  const [phase, setPhase] = useState<'caller' | 'voice' | 'matched'>('caller')
+  const matchPct = voiceMatchPct(customer.sif)
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase('voice'), 700)
+    const t2 = setTimeout(() => setPhase('matched'), 2000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [])
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border-dark bg-surface">
+      <div className="flex items-center gap-2 border-b border-border-dark px-3 py-2">
+        <Sparkle className="animate-pulse text-[#5b9bff]" />
+        <span className="text-[12px] font-semibold text-content">AI verifying caller</span>
+        <span className="ml-auto truncate text-[11px] text-content-muted">{customer.name}</span>
+      </div>
+
+      <div className="flex flex-col gap-3 p-3">
+        {/* Step 1: Caller-ID sweep */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span>📞</span>
+            <span className="tabular-nums text-content">{customer.phone}</span>
+            {phase === 'caller'
+              ? <span className="text-content-muted"> · matching…</span>
+              : <span className="font-medium text-up"> · matched ✓</span>}
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-[#1e2125]">
+            <div
+              className="h-full rounded-full bg-action"
+              style={{ animation: 'callerSweep 0.6s cubic-bezier(0.4,0,0.2,1) forwards' }}
+            />
+          </div>
+        </div>
+
+        {/* Step 2 / 3: Voice waveform */}
+        {phase !== 'caller' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <span>🎙️</span>
+              {phase === 'voice'
+                ? <span className="text-content-muted">Analysing voiceprint…</span>
+                : <span className="font-semibold text-up">Voice matched · {matchPct}% ✓</span>}
+            </div>
+
+            {/* Animated bars — scaleY from centre */}
+            <div className="flex h-10 items-center justify-center gap-[3px]">
+              {VOICE_BARS.map((bar, i) => (
+                <div key={i} className="h-full flex-1" style={{ maxWidth: '10px' }}>
+                  <div
+                    className="h-full w-full rounded-full"
+                    style={{
+                      backgroundColor: phase === 'matched' ? '#2fd07a' : '#5b9bff',
+                      transformOrigin: 'center',
+                      transform: phase === 'matched' ? 'scaleY(0.18)' : 'scaleY(0.1)',
+                      transition: phase === 'matched' ? 'transform 0.3s ease, background-color 0.3s ease' : undefined,
+                      animation: phase === 'voice'
+                        ? `voiceBarAnim ${bar.dur} ease-in-out ${bar.delay} infinite alternate`
+                        : undefined,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: loading profile indicator */}
+        {phase === 'matched' && (
+          <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
+            <Sparkle className="text-[#5b9bff]" />
+            <span>Loading profile &amp; portfolio…</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Client column: CIF search + verify + snapshot ────────────────────────────
 function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [] }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[] }) {
   const [cif, setCif] = useState('')
@@ -243,27 +336,8 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
         </div>
       </div>
 
-      {/* Verifying: show HOW the AI verifies the caller */}
       {verifying ? (
-        <div className="rounded-xl border border-border-dark bg-surface p-3">
-          <div className="mb-2.5 flex items-center gap-2 text-[12px] font-semibold text-content">
-            <Sparkle className="animate-pulse text-[#5b9bff]" /> AI verifying caller…
-          </div>
-          <ul className="flex flex-col gap-2.5 text-[11px]">
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0">📞</span>
-              <span className="text-content-muted">Inbound caller‑ID <span className="tabular-nums text-content">{verifying.phone}</span> → matched to <span className="text-content">CIF {verifying.cif}</span> ({verifying.name}).</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0">🎙️</span>
-              <span className="text-content-muted">Analysing voiceprint against enrolled sample — <span className="font-semibold text-up">{voiceMatchPct(verifying.sif)}% match</span>.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0 text-[#5b9bff]"><Sparkle /></span>
-              <span className="text-content-muted">Confirming identity &amp; loading profile…</span>
-            </li>
-          </ul>
-        </div>
+        <VerifyAnimation customer={verifying} />
       ) : client ? (
         <>
           <div className="rounded-xl border border-border-dark bg-surface">
@@ -385,7 +459,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     setPlaced(false)
     setCasaMoved(0)
     setTranscript([])
-    // Simulate caller-ID + voiceprint verification, then open the call.
+    // Let the verify animation play (caller sweep → voice bars → matched) then open.
     setTimeout(() => {
       if (sessionRef.current !== sid) return
       setClient(c)
@@ -394,7 +468,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       playScript([
         ['Broker', `Good morning ${c.name.split(' ')[0]} — you're through to your desk. How can I help today?`],
       ])
-    }, 1100)
+    }, 2500)
   }
 
   // Capture what the client asked for → transcript turn + parsed basket.
