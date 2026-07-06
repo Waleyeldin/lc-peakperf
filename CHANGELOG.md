@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.2.6
+
+- **Fixed blank scroll space below Time & Sales (root cause)** — the saved layout was loaded as-is, without compacting. If panels had been dragged so that Time & Sales sat a few rows below the panels above it, those empty rows were real grid height (invisible but scrollable), and making Time & Sales taller only extended below the gap rather than filling it. Now the layout is compacted on every load — all gaps are closed before the grid renders. Any unknown panel IDs in a saved layout (which inflate grid height with no visible content) are also stripped on load.
+
 ## v3.2.5
 
 - **Order Basket buy/sell colors stronger** — the Buy and Sell sections in Order Placement AI now use the same bold visual treatment as classic Order Placement: 2px solid blue/red border, solid color header bar, white text on the header. The weaker translucent style is replaced with unmistakable colour.

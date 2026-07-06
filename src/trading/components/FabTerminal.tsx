@@ -1339,6 +1339,26 @@ const DEFAULT_GRID_LAYOUT: RGLLayoutItem[] = [
   { i: 'timesales',  x: 0,  y: 18, w: 12, h: 3,  minW: 2, minH: 2 },
 ]
 
+// Replicates RGL's vertical compact: moves each item to the topmost row where
+// it fits without overlapping already-placed items. Eliminates gaps that
+// accumulate from drag history saved across sessions.
+function compactVertical(layout: RGLLayoutItem[]): RGLLayoutItem[] {
+  const sorted = [...layout].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
+  const placed: RGLLayoutItem[] = []
+  for (const item of sorted) {
+    let y = 0
+    for (let guard = 0; guard < 200; guard++) {
+      const blocker = placed.find(
+        (p) => p.x < item.x + item.w && p.x + p.w > item.x && p.y < y + item.h && p.y + p.h > y,
+      )
+      if (!blocker) break
+      y = blocker.y + blocker.h
+    }
+    placed.push({ ...item, y })
+  }
+  return placed
+}
+
 function loadGridLayout(): RGLLayoutItem[] {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
@@ -1346,9 +1366,11 @@ function loadGridLayout(): RGLLayoutItem[] {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return DEFAULT_GRID_LAYOUT
     const layout = parsed as RGLLayoutItem[]
-    // Discard if any item has an invalid y (null from JSON.stringify(Infinity)) or unreasonably large y
     if (layout.some((item) => typeof item.y !== 'number' || item.y < 0 || item.y > 60)) return DEFAULT_GRID_LAYOUT
-    return layout
+    // Strip unknown panel IDs (ghost panels inflate grid height with no visible content)
+    // then compact vertically so gaps left by past drag history don't create blank scroll space
+    const known = layout.filter((item) => (ALL_PANEL_IDS as string[]).includes(item.i))
+    return compactVertical(known)
   } catch {
     return DEFAULT_GRID_LAYOUT
   }
