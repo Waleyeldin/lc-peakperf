@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.1.7
+
+- **Stable panel layout when resizing** — resizing a panel's height no longer causes other panels to jump or reorganise. Panels stay in their defined order; only the resized panel changes size.
+
 ## v3.1.6
 
 - **Vertical panel resize** — drag the bottom edge of any graph panel to shrink or grow its height. Reclaim blank space in panels like Indices or Market Breadth and fill it with panels below. Heights are saved and restored across sessions.

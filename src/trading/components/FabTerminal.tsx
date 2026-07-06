@@ -1948,7 +1948,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
       <div className="flex-1 overflow-y-auto p-3">
-        <div className="grid grid-flow-dense grid-cols-12 gap-3" style={{ gridAutoRows: `${ROW_UNIT - 12}px` }}>
+        <div className="grid grid-cols-12 gap-3" style={{ gridAutoRows: `${ROW_UNIT - 12}px` }}>
           {order.map((id) => {
             const def = panels[id]
             return (
