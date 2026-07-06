@@ -24,7 +24,6 @@ jobs:
       matrix:
         include:
           - platform: macos-latest      # Builds ARM + Intel sequentially (no race)
-          - platform: ubuntu-22.04
           - platform: windows-latest
 
     runs-on: ${{ matrix.platform }}
@@ -41,11 +40,6 @@ jobs:
         with:
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
         run: npm install
@@ -95,21 +89,6 @@ jobs:
           args: '--target x86_64-apple-darwin'
 
       # ── Linux / Windows: single build step ───────────────────────────────
-
-      - name: Build & release (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'FAB Trade v__VERSION__'
-          releaseBody: ${{ steps.changelog.outputs.notes }}
-          releaseDraft: false
-          prerelease: false
-          args: ''
 
       - name: Build & release (Windows)
         if: matrix.platform == 'windows-latest'
