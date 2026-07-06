@@ -52,6 +52,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Extract changelog for this version
+        id: changelog
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          NOTES=$(awk "/^## v${VERSION}$/{found=1; next} /^## v/{if(found) exit} found{print}" CHANGELOG.md | sed '/^[[:space:]]*$/d' | sed '1s/^//')
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Build & release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -62,18 +72,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'FAB Trade v__VERSION__'
-          releaseBody: |
-            **FAB Trade v__VERSION__** (formerly LC PeakPerf / TRADENET X)
-
-            Highlights:
-            - Rebrand to **FAB Trade** + a branded **sign-in** screen.
-            - **Order Placement · AI** — caller verification, live call transcript, multi-order baskets, AI risk/compliance/buying-power checks, CASA top-up, and "what to pitch".
-            - **Order Placement** — CIF autocomplete over 12 clients, browser-style client tabs with pinning, VIP toggle.
-            - **Graph terminal** — hide/restore panels, drag panels by the title bar.
-            - **Markets** — DFM (real-time) / ADX (simulated) across both Graph and Detailed views.
-            - App — clean scrollbars, wider windows, in-app "Check for updates".
-
-            See CHANGELOG.md for the full notes. Download the installer for your platform below.
+          releaseBody: ${{ steps.changelog.outputs.notes }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

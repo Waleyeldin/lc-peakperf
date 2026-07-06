@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.1.5
+
+- **Fixed text selection during panel drag** — dragging a panel header no longer highlights text across the screen. Clicking to select or copy text in panels still works normally.
+
+## v3.1.4
+
+- **Fixed macOS drag opening board window** — dragging a panel to reorder it on Mac was incorrectly triggering "tear out to board" due to a coordinate system difference in macOS WebView. Panels now reposition correctly on Mac, matching Windows behaviour.
+
 ## v3.1.3
 
 - **Client tabs reorder reliably on macOS** — the Order Placement client tabs now drag-reorder with pointer events (matching the graph panels), instead of HTML5 drag-and-drop which is unreliable in the Mac WebView. This removes the last drag interaction that could misbehave on Mac.
