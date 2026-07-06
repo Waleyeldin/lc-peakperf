@@ -1310,13 +1310,18 @@ interface PanelDef {
   render: () => ReactNode
 }
 
-const LAYOUT_KEY = 'fab-terminal-layout-v4'
+const LAYOUT_KEY = 'fab-terminal-layout-v5'
 
 /** Min / max column span a panel may occupy. Min 2/12 lets panels pack tighter. */
 const MIN_SPAN = 2
 const MAX_SPAN = 12
-
 const clampSpan = (n: number) => Math.max(MIN_SPAN, Math.min(MAX_SPAN, n))
+
+/** Min / max row span. Each row unit = 80px (+ 12px gap between units). */
+const MIN_ROWS = 2
+const MAX_ROWS = 20
+const ROW_UNIT = 92 // px per row unit (80px row + 12px gap) — used for drag-resize maths
+const clampRows = (n: number) => Math.max(MIN_ROWS, Math.min(MAX_ROWS, n))
 
 /**
  * Default order. News is prioritised into the top row (right of the hero) so
@@ -1334,28 +1339,32 @@ const DEFAULT_ORDER: PanelId[] = [
   'timesales',
 ]
 
-/** Default width (column span) per panel — matches the original fixed layout. */
+/** Default width (column span) per panel. */
 const DEFAULT_SPANS: Record<PanelId, number> = {
-  indices: 3,
-  hero: 6,
-  orderbook: 3,
-  breadth: 4,
-  sector: 4,
-  movers: 4,
-  watchlist: 3,
-  mostactive: 6,
-  news: 3,
+  indices: 3, hero: 6, orderbook: 3,
+  breadth: 4, sector: 4, movers: 4,
+  watchlist: 3, mostactive: 6, news: 3,
   timesales: 12,
+}
+
+/** Default height (row span) per panel. */
+const DEFAULT_HEIGHTS: Record<PanelId, number> = {
+  indices: 4, hero: 8, orderbook: 6,
+  breadth: 4, sector: 5, movers: 4,
+  watchlist: 5, mostactive: 6, news: 5,
+  timesales: 3,
 }
 
 interface Layout {
   order: PanelId[]
   spans: Record<PanelId, number>
+  heights: Record<PanelId, number>
 }
 
 const defaultLayout = (): Layout => ({
   order: DEFAULT_ORDER.slice(),
   spans: { ...DEFAULT_SPANS },
+  heights: { ...DEFAULT_HEIGHTS },
 })
 
 function isValidOrder(value: unknown): value is PanelId[] {
@@ -1379,6 +1388,16 @@ function isValidSpans(value: unknown): value is Record<PanelId, number> {
   return true
 }
 
+function isValidHeights(value: unknown): value is Record<PanelId, number> {
+  if (typeof value !== 'object' || value === null) return false
+  const rec = value as Record<string, unknown>
+  for (const id of DEFAULT_ORDER) {
+    const n = rec[id]
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < MIN_ROWS || n > MAX_ROWS) return false
+  }
+  return true
+}
+
 /** Read+validate a persisted layout; fall back to defaults if missing/invalid. */
 function loadLayout(): Layout {
   try {
@@ -1386,9 +1405,9 @@ function loadLayout(): Layout {
     if (!raw) return defaultLayout()
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return defaultLayout()
-    const { order, spans } = parsed as { order?: unknown; spans?: unknown }
+    const { order, spans, heights } = parsed as { order?: unknown; spans?: unknown; heights?: unknown }
     if (!isValidOrder(order) || !isValidSpans(spans)) return defaultLayout()
-    return { order, spans }
+    return { order, spans, heights: isValidHeights(heights) ? heights : { ...DEFAULT_HEIGHTS } }
   } catch {
     return defaultLayout()
   }
@@ -1398,6 +1417,7 @@ function loadLayout(): Layout {
 function DraggablePanel({
   id,
   span,
+  rows,
   draggingId,
   overId,
   onDragStartPanel,
@@ -1405,6 +1425,7 @@ function DraggablePanel({
   onDropPanel,
   onDragEndPanel,
   onResizeSpan,
+  onResizeRows,
   onToggleFullWidth,
   onTearOut,
   onHide,
@@ -1413,6 +1434,7 @@ function DraggablePanel({
 }: {
   id: PanelId
   span: number
+  rows: number
   draggingId: PanelId | null
   overId: PanelId | null
   onDragStartPanel: (id: PanelId) => void
@@ -1420,27 +1442,24 @@ function DraggablePanel({
   onDropPanel: (id: PanelId) => void
   onDragEndPanel: () => void
   onResizeSpan: (id: PanelId, span: number) => void
+  onResizeRows: (id: PanelId, rows: number) => void
   onToggleFullWidth: (id: PanelId) => void
   onTearOut?: (id: PanelId, screenX?: number, screenY?: number) => void
   onHide?: (id: PanelId) => void
   highlight?: boolean
   children: ReactNode
 }) {
-  // Drag happens from the header (a strip below the header actions), so charts /
-  // buttons inside the panel never start an accidental drag.
   const [resizing, setResizing] = useState(false)
+  const [resizingRow, setResizingRow] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
   const downRef = useRef<{ x: number; y: number } | null>(null)
-  // Captured at pointer-down so a continuous drag maps px → column delta
-  // independently of intermediate re-renders.
   const resizeRef = useRef<{ startX: number; startSpan: number; unit: number } | null>(null)
+  const resizeRowRef = useRef<{ startY: number; startRows: number } | null>(null)
   const isDragging = draggingId === id
   const isOver = overId === id && draggingId !== null && draggingId !== id
 
   const beginResize = (e: PointerEvent<HTMLDivElement>) => {
-    // Keep the resize completely separate from the reorder grip so it never
-    // arms a native HTML5 drag.
     e.stopPropagation()
     e.preventDefault()
     const el = wrapperRef.current
@@ -1467,12 +1486,36 @@ function DraggablePanel({
     setResizing(false)
   }
 
+  const beginRowResize = (e: PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    resizeRowRef.current = { startY: e.clientY, startRows: rows }
+    setResizingRow(true)
+  }
+
+  const moveRowResize = (e: PointerEvent<HTMLDivElement>) => {
+    const ctx = resizeRowRef.current
+    if (!ctx || !resizingRow) return
+    const deltaRows = Math.round((e.clientY - ctx.startY) / ROW_UNIT)
+    const next = clampRows(ctx.startRows + deltaRows)
+    if (next !== rows) onResizeRows(id, next)
+  }
+
+  const endRowResize = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    resizeRowRef.current = null
+    setResizingRow(false)
+  }
+
   return (
     <div
       ref={wrapperRef}
       data-panel-id={id}
-      style={{ gridColumn: `span ${span} / span ${span}` }}
-      className={`group relative isolate h-full [&>section]:h-full transition-shadow ${isDragging ? 'opacity-50' : ''} ${
+      style={{ gridColumn: `span ${span} / span ${span}`, gridRow: `span ${rows} / span ${rows}` }}
+      className={`group relative isolate [&>section]:h-full transition-shadow ${isDragging ? 'opacity-50' : ''} ${
         isOver ? 'rounded-xl ring-2 ring-action/70' : ''
       } ${highlight ? 'rounded-xl ring-2 ring-action shadow-[0_0_0_4px_rgba(0,98,255,0.25)]' : ''}`}
     >
@@ -1549,10 +1592,16 @@ function DraggablePanel({
         </div>
       </div>
       {children}
-      {/* Width indicator (only while actively resizing). */}
+      {/* Width indicator (only while actively resizing width). */}
       {resizing && (
         <span className="pointer-events-none absolute right-3 top-1/2 z-30 -translate-y-1/2 rounded bg-action/90 px-1.5 py-0.5 text-[10px] font-medium leading-none tabular-nums text-white shadow">
           {span}/12
+        </span>
+      )}
+      {/* Height indicator (only while actively resizing height). */}
+      {resizingRow && (
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded bg-action/90 px-1.5 py-0.5 text-[10px] font-medium leading-none tabular-nums text-white shadow">
+          {rows} rows
         </span>
       )}
       {/* Vertical resize handle on the right edge. Double-click toggles full width. */}
@@ -1571,6 +1620,20 @@ function DraggablePanel({
         }}
         className={`absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors ${
           resizing ? 'bg-action' : 'bg-transparent group-hover:bg-[rgba(255,255,255,0.12)] hover:!bg-action/70'
+        }`}
+      />
+      {/* Horizontal resize handle on the bottom edge. */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize panel height"
+        title="Drag to resize height"
+        onPointerDown={beginRowResize}
+        onPointerMove={moveRowResize}
+        onPointerUp={endRowResize}
+        onLostPointerCapture={endRowResize}
+        className={`absolute bottom-0 left-0 z-20 h-1.5 w-full cursor-row-resize transition-colors ${
+          resizingRow ? 'bg-action' : 'bg-transparent group-hover:bg-[rgba(255,255,255,0.12)] hover:!bg-action/70'
         }`}
       />
     </div>
@@ -1747,6 +1810,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   const initialLayout = useMemo(() => loadLayout(), [])
   const [order, setOrder] = useState<PanelId[]>(initialLayout.order)
   const [spans, setSpans] = useState<Record<PanelId, number>>(initialLayout.spans)
+  const [heights, setHeights] = useState<Record<PanelId, number>>(initialLayout.heights)
   const [draggingId, setDraggingId] = useState<PanelId | null>(null)
   const [overId, setOverId] = useState<PanelId | null>(null)
   // Remembers each panel's pre-full-width span so double-click can toggle back.
@@ -1763,14 +1827,14 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   // looks share one workspace board. The panel also stays in the graph.
   const popOut = (id: PanelId) => { void sendToBoard(id) }
 
-  // Persist order AND spans together (v2 layout).
+  // Persist order, spans, and heights together.
   useEffect(() => {
     try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, spans }))
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify({ order, spans, heights }))
     } catch {
       /* ignore quota/availability errors */
     }
-  }, [order, spans])
+  }, [order, spans, heights])
 
   // Panel registry — keeps each panel's existing props/behaviour identical.
   const panels: Record<PanelId, PanelDef> = useMemo(
@@ -1805,6 +1869,10 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
     setSpans((prev) => (prev[id] === span ? prev : { ...prev, [id]: clampSpan(span) }))
   }
 
+  const handleResizeRows = (id: PanelId, rows: number) => {
+    setHeights((prev) => (prev[id] === rows ? prev : { ...prev, [id]: clampRows(rows) }))
+  }
+
   const handleToggleFullWidth = (id: PanelId) => {
     setSpans((prev) => {
       if (prev[id] !== MAX_SPAN) {
@@ -1820,6 +1888,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
     const fresh = defaultLayout()
     setOrder(fresh.order)
     setSpans(fresh.spans)
+    setHeights(fresh.heights)
     prevSpanRef.current = {}
     try {
       localStorage.removeItem(LAYOUT_KEY)
@@ -1872,13 +1941,14 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
 
   const orderCustomized = order.some((id, i) => id !== DEFAULT_ORDER[i])
   const spansCustomized = DEFAULT_ORDER.some((id) => spans[id] !== DEFAULT_SPANS[id])
-  const isCustomized = orderCustomized || spansCustomized
+  const heightsCustomized = DEFAULT_ORDER.some((id) => heights[id] !== DEFAULT_HEIGHTS[id])
+  const isCustomized = orderCustomized || spansCustomized || heightsCustomized
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
       <div className="flex-1 overflow-y-auto p-3">
-        <div className="grid auto-rows-auto grid-flow-dense grid-cols-12 gap-3">
+        <div className="grid grid-flow-dense grid-cols-12 gap-3" style={{ gridAutoRows: `${ROW_UNIT - 12}px` }}>
           {order.map((id) => {
             const def = panels[id]
             return (
@@ -1886,6 +1956,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
                 key={def.id}
                 id={def.id}
                 span={spans[def.id]}
+                rows={heights[def.id]}
                 draggingId={draggingId}
                 overId={overId}
                 onDragStartPanel={setDraggingId}
@@ -1896,6 +1967,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
                   setOverId(null)
                 }}
                 onResizeSpan={handleResizeSpan}
+                onResizeRows={handleResizeRows}
                 onToggleFullWidth={handleToggleFullWidth}
                 onTearOut={popOut}
                 onHide={handleHide}

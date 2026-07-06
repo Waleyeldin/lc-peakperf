@@ -440,7 +440,6 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     const totalBuy = parts.filter((p) => p.side === 'buy').reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
     const totalSell = parts.filter((p) => p.side === 'sell').reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
     const first = c.name.split(' ')[0]
-    const sellNames = sells.map((s) => s.symbol).join(' and ')
     const buyLines = parts.filter((p) => p.side === 'buy').map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(', ')
     const sellLines = parts.filter((p) => p.side === 'sell').map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(' and ')
     playScript([
