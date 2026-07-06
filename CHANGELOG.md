@@ -1,8 +1,12 @@
 # Changelog
 
-## v3.2.2
+## v3.2.3
 
-- **Fixed horizontal scroll / blank space on the right** — the grid now measures its container width correctly so panels never overflow horizontally.
+- **Fixed vertical blank space when scrolling** — three-part fix: document scroll locked to viewport so the body can never grow; `y: Infinity` panel placement replaced with a calculated bottom row so the grid never temporarily inflates to a huge height; saved layouts with invalid `y` values (from prior sessions) are auto-discarded and reset to default.
+- **Fixed horizontal scroll / blank space on the right** — grid measures its container width correctly; horizontal overflow is clipped.
+- **Order Basket redesigned** — Buy and Sell orders now appear in separate coloured sections (blue for Buy, red for Sell), each with a live sub-total in the header. Separate ＋ Buy and ＋ Sell buttons; a ↓ / ↑ arrow moves a line between sections instantly.
+
+## v3.2.2
 
 ## v3.2.1
 

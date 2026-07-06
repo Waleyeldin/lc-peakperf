@@ -347,7 +347,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const makeLine = (side: Side, symbol: string, qty: number): OrderLine => ({ id: ++lineId.current, side, symbol, qty })
   const updateLine = (id: number, patch: Partial<OrderLine>) => setOrders((os) => os.map((o) => (o.id === id ? { ...o, ...patch } : o)))
   const removeLine = (id: number) => setOrders((os) => os.filter((o) => o.id !== id))
-  const addLine = () => setOrders((os) => [...os, makeLine('buy', FULL_MARKET.find((s) => s.lastPrice > 0)!.symbolShortName, 10_000)])
+  const addLine = (side: Side) => setOrders((os) => [...os, makeLine(side, FULL_MARKET.find((s) => s.lastPrice > 0)!.symbolShortName, 10_000)])
   const [transcript, setTranscript] = useState<{ id: number; speaker: 'Broker' | 'Client' | 'AI'; text: string; time: string }[]>(() => snap?.transcript ?? [])
   const turnId = useRef((snap?.transcript ?? []).reduce((m, t) => Math.max(m, t.id), 0))
   const sessionRef = useRef(0) // bumps on reset / new call so stale scripted turns are dropped
@@ -630,35 +630,66 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
               </button>
             </div>
             {orders.length > 0 && (
-              <div className="mt-3">
-                <div className="mb-1.5 flex items-center justify-between">
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Order basket · {orders.length} line{orders.length > 1 ? 's' : ''}</span>
-                  <button onClick={addLine} className="rounded border border-border-dark bg-[#1f2226] px-2 py-0.5 text-[10px] font-medium text-content hover:bg-[#262a2f]">＋ Add line</button>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => addLine('buy')} className="rounded border border-[rgba(0,98,255,0.35)] bg-[rgba(0,98,255,0.1)] px-2 py-0.5 text-[10px] font-semibold text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.18)]">＋ Buy</button>
+                    <button onClick={() => addLine('sell')} className="rounded border border-[rgba(255,107,114,0.35)] bg-offer-surface px-2 py-0.5 text-[10px] font-semibold text-down hover:brightness-125">＋ Sell</button>
+                  </div>
                 </div>
-                <ul className="flex flex-col gap-1.5">
-                  {orders.map((o) => {
-                    const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
-                    const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
-                    return (
-                      <li key={o.id} className="flex items-center gap-2">
-                        <select
-                          value={o.side}
-                          onChange={(e) => updateLine(o.id, { side: e.target.value as Side })}
-                          className={`h-8 shrink-0 rounded border px-1 text-[11px] font-semibold uppercase outline-none ${o.side === 'buy' ? 'border-[rgba(0,98,255,0.4)] bg-[rgba(0,98,255,0.12)] text-[#9cc0ff]' : 'border-[rgba(255,107,114,0.4)] bg-offer-surface text-down'}`}
-                        >
-                          <option value="buy" className="bg-surface text-content">Buy</option>
-                          <option value="sell" className="bg-surface text-content">Sell</option>
-                        </select>
-                        <select value={o.symbol} onChange={(e) => updateLine(o.id, { symbol: e.target.value })} className="h-8 min-w-0 flex-1 rounded border border-border-dark bg-[#15171a] px-2 text-[12px] text-content outline-none focus:border-action">
-                          {FULL_MARKET.map((x) => <option key={x.symbolShortName} value={x.symbolShortName} className="bg-surface">{x.symbolShortName}</option>)}
-                        </select>
-                        <input type="number" value={o.qty} onChange={(e) => updateLine(o.id, { qty: Math.max(0, +e.target.value) })} className="h-8 w-24 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-action" />
-                        <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-content-muted">{fmtMoney(last * o.qty)}</span>
-                        <button onClick={() => removeLine(o.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove line" aria-label="Remove line">✕</button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                {/* Buy section */}
+                {orders.some((o) => o.side === 'buy') && (
+                  <div className="overflow-hidden rounded-lg border border-[rgba(0,98,255,0.28)]">
+                    <div className="flex items-center justify-between bg-[rgba(0,98,255,0.1)] px-2.5 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-[#9cc0ff]">↑ Buy · {orders.filter((o) => o.side === 'buy').length}</span>
+                      <span className="text-[10px] tabular-nums text-[#9cc0ff]/70">{fmtMoney(orders.filter((o) => o.side === 'buy').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
+                    </div>
+                    <ul className="flex flex-col divide-y divide-[rgba(0,98,255,0.1)]">
+                      {orders.filter((o) => o.side === 'buy').map((o) => {
+                        const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
+                        const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
+                        return (
+                          <li key={o.id} className="flex items-center gap-2 px-2 py-1.5">
+                            <select value={o.symbol} onChange={(e) => updateLine(o.id, { symbol: e.target.value })} className="h-7 min-w-0 flex-1 rounded border border-border-dark bg-[#15171a] px-2 text-[12px] text-content outline-none focus:border-action">
+                              {FULL_MARKET.map((x) => <option key={x.symbolShortName} value={x.symbolShortName} className="bg-surface">{x.symbolShortName}</option>)}
+                            </select>
+                            <input type="number" value={o.qty} onChange={(e) => updateLine(o.id, { qty: Math.max(0, +e.target.value) })} className="h-7 w-24 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-action" />
+                            <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-content-muted">{fmtMoney(last * o.qty)}</span>
+                            <button onClick={() => updateLine(o.id, { side: 'sell' })} title="Move to Sell" className="shrink-0 text-[10px] text-content-subtle hover:text-down">↓</button>
+                            <button onClick={() => removeLine(o.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove" aria-label="Remove">✕</button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {/* Sell section */}
+                {orders.some((o) => o.side === 'sell') && (
+                  <div className="overflow-hidden rounded-lg border border-[rgba(255,107,114,0.28)]">
+                    <div className="flex items-center justify-between bg-offer-surface px-2.5 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-down">↓ Sell · {orders.filter((o) => o.side === 'sell').length}</span>
+                      <span className="text-[10px] tabular-nums text-down/70">{fmtMoney(orders.filter((o) => o.side === 'sell').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
+                    </div>
+                    <ul className="flex flex-col divide-y divide-[rgba(255,107,114,0.1)]">
+                      {orders.filter((o) => o.side === 'sell').map((o) => {
+                        const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
+                        const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
+                        return (
+                          <li key={o.id} className="flex items-center gap-2 px-2 py-1.5">
+                            <select value={o.symbol} onChange={(e) => updateLine(o.id, { symbol: e.target.value })} className="h-7 min-w-0 flex-1 rounded border border-border-dark bg-[#15171a] px-2 text-[12px] text-content outline-none focus:border-action">
+                              {FULL_MARKET.map((x) => <option key={x.symbolShortName} value={x.symbolShortName} className="bg-surface">{x.symbolShortName}</option>)}
+                            </select>
+                            <input type="number" value={o.qty} onChange={(e) => updateLine(o.id, { qty: Math.max(0, +e.target.value) })} className="h-7 w-24 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-action" />
+                            <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-content-muted">{fmtMoney(last * o.qty)}</span>
+                            <button onClick={() => updateLine(o.id, { side: 'buy' })} title="Move to Buy" className="shrink-0 text-[10px] text-content-subtle hover:text-[#9cc0ff]">↑</button>
+                            <button onClick={() => removeLine(o.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove" aria-label="Remove">✕</button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1346,8 +1346,8 @@ function loadGridLayout(): RGLLayoutItem[] {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return DEFAULT_GRID_LAYOUT
     const layout = parsed as RGLLayoutItem[]
-    // Discard if any item has a suspiciously large y (leftover from Infinity placement)
-    if (layout.some((item) => item.y > 60)) return DEFAULT_GRID_LAYOUT
+    // Discard if any item has an invalid y (null from JSON.stringify(Infinity)) or unreasonably large y
+    if (layout.some((item) => typeof item.y !== 'number' || item.y < 0 || item.y > 60)) return DEFAULT_GRID_LAYOUT
     return layout
   } catch {
     return DEFAULT_GRID_LAYOUT
@@ -1622,7 +1622,8 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   const handleShow = (id: PanelId) => {
     if (gridLayout.some((item) => item.i === id)) return
     const def = DEFAULT_GRID_LAYOUT.find((item) => item.i === id)
-    setGridLayout((prev) => [...prev, { ...(def ?? { i: id, x: 0, w: 4, h: 4, minW: 2, minH: 2 }), y: Infinity }])
+    const bottomRow = gridLayout.reduce((acc, item) => Math.max(acc, item.y + item.h), 0)
+    setGridLayout((prev) => [...prev, { ...(def ?? { i: id, x: 0, w: 4, h: 4, minW: 2, minH: 2 }), y: bottomRow }])
   }
   const hiddenPanels = ALL_PANEL_IDS.filter((id) => !gridLayout.some((item) => item.i === id))
 
