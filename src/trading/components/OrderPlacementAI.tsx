@@ -441,11 +441,13 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     const totalSell = parts.filter((p) => p.side === 'sell').reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
     const first = c.name.split(' ')[0]
     const sellNames = sells.map((s) => s.symbol).join(' and ')
+    const buyLines = parts.filter((p) => p.side === 'buy').map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(', ')
+    const sellLines = parts.filter((p) => p.side === 'sell').map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(' and ')
     playScript([
       ['Broker', `Good morning ${first} — you're through to your desk. How can I help today?`],
-      ['Client', `Morning. I'd like to rebalance today — pick up ${buyable.join(', ')}${sells.length ? `, and trim my ${sellNames}` : ''}.`],
-      ['Broker', `Happy to help. So ${buyable.length} buys${sells.length ? ` and ${sells.length} sells` : ''} — let me build the basket and check it.`],
-      ['AI', `Captured ${parts.length} lines (${buyable.length} buys, ${sells.length} sells) — net ${fmtMoney(totalBuy - totalSell)} within ${fmtMoney(c.cash)} available. Fully funded, all clear.`, () => { setOrders(parts); setRequest(requestText) }],
+      ['Client', `Morning. I'd like to rebalance today — buy ${buyLines}${sellLines ? `, and sell ${sellLines}` : ''}.`],
+      ['Broker', `Happy to help. So ${buyable.length} buy${buyable.length === 1 ? '' : 's'}${sells.length ? ` and ${sells.length} sell${sells.length === 1 ? '' : 's'}` : ''} — let me build the basket and check it.`],
+      ['AI', `Captured ${parts.length} line${parts.length === 1 ? '' : 's'} — ${parts.map((p) => `${p.side} ${fmtInt(p.qty)} ${p.symbol}`).join(', ')}. Net ${fmtMoney(totalBuy - totalSell)} within ${fmtMoney(c.cash)} available. Fully funded, all clear.`, () => { setOrders(parts); setRequest(requestText) }],
       ['Broker', `You're all set — the sells help fund the buys and everything checks out. I'll place it now.`],
     ])
   }
@@ -460,11 +462,12 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     const total = parts.reduce((a, l) => a + pxOf(l.symbol) * l.qty, 0)
     const short = Math.max(0, total - c.cash)
     const first = c.name.split(' ')[0]
+    const shortBuyLines = parts.map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(', ')
     playScript([
       ['Broker', `Good morning ${first} — how can I help today?`],
-      ['Client', `I'd like to build a larger position across ${buys.join(', ')} today.`],
+      ['Client', `I'd like to buy ${shortBuyLines} today.`],
       ['Broker', `Of course. Let me size that up and run the checks.`],
-      ['AI', `Buying power check — the basket needs about ${fmtMoney(total)} but only ${fmtMoney(c.cash)} is available. Short ${fmtMoney(short)}.`, () => { setOrders(parts); setRequest(requestText) }],
+      ['AI', `Buying power check — basket is ${parts.map((p) => `${fmtInt(p.qty)} ${p.symbol}`).join(', ')} totalling ${fmtMoney(total)}, but only ${fmtMoney(c.cash)} is available. Short ${fmtMoney(short)}.`, () => { setOrders(parts); setRequest(requestText) }],
       ['Broker', `${first}, you're a little short on settled cash for this — about ${fmtMoney(short)}. Would you like me to move that across from your CASA account to cover it?`],
       ['Client', `Yes, that's fine — please move it from my CASA.`],
       ['Broker', `Great — I'll move it now and then place the basket.`],
