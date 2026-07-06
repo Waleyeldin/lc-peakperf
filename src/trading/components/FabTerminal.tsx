@@ -1673,7 +1673,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <TerminalGrid
           layout={gridLayout}
           cols={GRID_COLS}
