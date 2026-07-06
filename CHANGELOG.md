@@ -1,13 +1,11 @@
 # Changelog
 
-## v3.1.10
-
-- **Mac build is now Apple Silicon native** — the release now ships an ARM-native build only. Install this version once and all future in-app updates will work correctly on M1/M2/M3 Macs.
-
-## v3.1.8
+## v3.2.0
 
 - **Free 2D panel layout** — graph panels now use a proper grid engine (react-grid-layout). Drag any panel to any position, resize from any edge. Nothing moves unless you move it — no automatic reshuffling.
 - **New default layout** — Indices is now 3 rows tall with Sector Performance stacked directly below it, eliminating the blank space in the left column.
+- **Apple Silicon + Intel Mac support** — both ARM (M1/M2/M3) and Intel Mac builds ship in every release. The updater now reliably detects which build your Mac needs and installs the correct version.
+- **Fixed update race condition** — in-app updates no longer show "platform not found" errors on Intel Macs.
 
 ## v3.1.7
 
