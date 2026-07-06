@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.1.6
+
+- **Vertical panel resize** — drag the bottom edge of any graph panel to shrink or grow its height. Reclaim blank space in panels like Indices or Market Breadth and fill it with panels below. Heights are saved and restored across sessions.
+
 ## v3.1.5
 
 - **Fixed text selection during panel drag** — dragging a panel header no longer highlights text across the screen. Clicking to select or copy text in panels still works normally.
