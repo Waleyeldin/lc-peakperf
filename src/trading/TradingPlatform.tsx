@@ -252,6 +252,9 @@ function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: View
   )
 }
 
+const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+const fmtKey = (key: string) => (isMac ? key.replace(/(F\d+)/, 'fn $1') : key)
+
 // ── Detailed-view shortcuts (parity with Graph's F-keys) ────────────────────
 type DetailedAction =
   | { kind: 'help' }
@@ -290,7 +293,7 @@ function DetailedShortcutBar({ onTrigger }: { onTrigger: (a: DetailedAction) => 
           onClick={() => onTrigger(h.action)}
           className="flex items-center gap-1.5 rounded border border-border-dark bg-[#1a1c1e] px-1.5 py-0.5 text-[11px] text-content-muted transition-colors hover:border-action/60 hover:text-content"
         >
-          <kbd className="rounded bg-[#0b0c0d] px-1 py-px font-mono text-[10px] font-semibold text-action">{h.key}</kbd>
+          <kbd className="rounded bg-[#0b0c0d] px-1 py-px font-mono text-[10px] font-semibold text-action">{fmtKey(h.key)}</kbd>
           {h.label}
         </button>
       ))}
@@ -313,14 +316,14 @@ function DetailedHelp({ open, onClose, onTrigger }: { open: boolean; onClose: ()
           {DETAILED_HOTKEYS.map((h) => (
             <li key={h.key}>
               <button type="button" onClick={() => onTrigger(h.action)} className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-[rgba(255,255,255,0.05)]">
-                <kbd className="w-10 shrink-0 rounded bg-[#0b0c0d] py-0.5 text-center font-mono text-[11px] font-semibold text-action">{h.key}</kbd>
+                <kbd className="w-14 shrink-0 rounded bg-[#0b0c0d] py-0.5 text-center font-mono text-[11px] font-semibold text-action">{fmtKey(h.key)}</kbd>
                 <span className="w-24 shrink-0 text-[12px] font-medium text-content">{h.label}</span>
                 <span className="flex-1 text-[12px] text-content-muted">{h.hint}</span>
               </button>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[11px] text-content-subtle">Press <kbd className="rounded bg-[#0b0c0d] px-1 font-mono text-action">F1</kbd> or <kbd className="rounded bg-[#0b0c0d] px-1 font-mono text-action">Esc</kbd> to close.</p>
+        <p className="mt-3 text-[11px] text-content-subtle">Press <kbd className="rounded bg-[#0b0c0d] px-1 font-mono text-action">{fmtKey('F1')}</kbd> or <kbd className="rounded bg-[#0b0c0d] px-1 font-mono text-action">Esc</kbd> to close.</p>
       </div>
     </div>
   )

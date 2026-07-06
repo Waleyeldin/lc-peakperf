@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.2.1
+
+- **News panel back beside the chart** — News is restored to the top-right of the Graph terminal, alongside the price chart, at the same height.
+- **All 8 resize handles** — every panel can now be resized from any edge or corner, not just the bottom-right. Corners show a clean 2-line diagonal grip that turns blue on hover.
+- **Mac shortcuts show fn keys** — the shortcut bar and help overlay now show "fn F1", "fn F5", etc. on macOS (where F-keys require the fn modifier by default).
+- **Fixed blank scroll space** — a corrupted saved layout could cause a large blank area below the last panel. Now caught and replaced with the default layout automatically.
+
 ## v3.2.0
 
 - **Free 2D panel layout** — graph panels now use a proper grid engine (react-grid-layout). Drag any panel to any position, resize from any edge. Nothing moves unless you move it — no automatic reshuffling.
