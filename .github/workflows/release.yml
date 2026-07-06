@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest      # Builds ARM + Intel sequentially (no race)
+          - platform: macos-15          # Pinned from macos-latest (which moved to macOS 26 on Jun 15 2026, breaking Tauri)
           - platform: windows-latest
 
     runs-on: ${{ matrix.platform }}
@@ -60,7 +60,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build & release (Apple Silicon)
-        if: matrix.platform == 'macos-latest'
+        if: contains(matrix.platform, 'macos')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +75,7 @@ jobs:
           args: '--target aarch64-apple-darwin'
 
       - name: Build & release (Intel Mac)
-        if: matrix.platform == 'macos-latest'
+        if: contains(matrix.platform, 'macos')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
