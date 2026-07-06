@@ -1674,7 +1674,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
         <TerminalGrid
           layout={gridLayout}
           cols={GRID_COLS}
@@ -1686,7 +1686,7 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
           isDraggable
           isResizable
           resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
-          isBounded={false}
+          isBounded={true}
           onLayoutChange={(l: RGLLayout) => setGridLayout([...l])}
         >
           {gridLayout.map((item) => {

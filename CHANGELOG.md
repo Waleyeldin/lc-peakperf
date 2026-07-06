@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.2.4
+
+- **Fixed vertical blank scroll at the bottom** — macOS WKWebView's rubber-band momentum scroll was letting the view bounce past the last panel. `overscroll-behavior: none` disables the bounce, so scroll stops exactly at Time & Sales.
+- **Fixed horizontal scroll when dragging a panel to the right edge** — with the grid unbounded, dragging a panel past the right column temporarily placed it outside the grid, triggering scroll. Panels are now bounded to the grid so they can't escape the right (or left) edge.
+
 ## v3.2.3
 
 - **Fixed vertical blank space when scrolling** — three-part fix: document scroll locked to viewport so the body can never grow; `y: Infinity` panel placement replaced with a calculated bottom row so the grid never temporarily inflates to a huge height; saved layouts with invalid `y` values (from prior sessions) are auto-discarded and reset to default.
