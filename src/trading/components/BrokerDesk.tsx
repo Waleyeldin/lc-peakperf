@@ -86,8 +86,9 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
   const selChgPct = selQ?.changePct ?? sel?.changePct ?? 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-dark bg-surface">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-dark border-t-[3px] border-t-[#0062ff] bg-surface">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border-dark px-3">
+        <span className="inline-block size-1.5 rounded-full bg-up shadow-[0_0_5px_#2fd07a]" title="Live market data" />
         <h3 className="text-[13px] font-semibold text-content">Market Watch</h3>
         <span className="text-[11px] text-content-muted">filters the Buy panel</span>
       </header>
@@ -357,7 +358,7 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
   }
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-xl border border-border-dark bg-surface">
+    <section className="shrink-0 overflow-hidden rounded-xl border border-border-dark border-l-[3px] border-l-[#0062ff] bg-surface">
       {/* Contact / identity header */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border-dark bg-[#141619] px-3 py-2">
         <span className="flex items-center gap-2">
@@ -386,7 +387,7 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
       </header>
 
       {/* Available balance — big and prominent */}
-      <div className="flex items-baseline gap-3 border-b border-border-dark bg-[#15171a] px-3 py-2.5">
+      <div className="flex items-baseline gap-3 border-b border-border-dark bg-[rgba(0,62,160,0.06)] px-3 py-2.5">
         <span className="text-[11px] font-medium uppercase tracking-wide text-content-muted">Available balance</span>
         <span className="text-[22px] font-bold leading-none tabular-nums text-content">{fmtMoney(cash)}</span>
       </div>
@@ -750,7 +751,12 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
     <ToastCtx.Provider value={notify}>
       <div className="flex h-full min-h-0 flex-col">
         {/* Toolbar: toggle the Market Watch, and (in its own window) dock to main. */}
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-dark bg-[#141619] px-3">
+        <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border-dark bg-[#0c0f14] px-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="h-4 w-[3px] rounded-full bg-[#0062ff]" />
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#4e5565]">Order Placement</span>
+          </div>
+          <span className="h-4 w-px shrink-0 bg-border-dark" />
           <button
             onClick={() => setShowWatch((v) => !v)}
             title="Show or hide the Market Watch panel"
@@ -763,7 +769,7 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
             <button
               onClick={handleDock}
               title="Bring this into the main window"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 10l-5 5 5 5" /><path d="M4 15h11a5 5 0 0 0 5-5V4" /></svg>
               Dock to main

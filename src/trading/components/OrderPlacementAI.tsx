@@ -180,12 +180,12 @@ function useWidth<T extends HTMLElement>() {
 function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string) => void }) {
   if (ideas.length === 0) return null
   return (
-    <div className="rounded-xl border border-border-dark bg-surface">
-      <div className="flex items-center gap-1.5 border-b border-border-dark px-3 py-2 text-[12px] font-semibold text-content">
-        <Sparkle className="text-[#5b9bff]" /> What to pitch
+    <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+      <div className="flex items-center gap-1.5 border-b border-[rgba(91,155,255,0.15)] bg-[rgba(91,155,255,0.06)] px-3 py-2 text-[12px] font-semibold text-[#5b9bff]">
+        <Sparkle /> What to pitch
         <span className="ml-auto text-[10px] font-normal text-content-subtle">live advisory</span>
       </div>
-      <ul className="divide-y divide-border-dark">
+      <ul className="divide-y divide-[rgba(91,155,255,0.12)]">
         {ideas.map((idea, i) => {
           const chip = idea.tone === 'sell' ? 'bg-offer-surface text-down' : idea.tone === 'buy' ? 'bg-bid-surface text-up' : 'bg-[rgba(0,98,255,0.14)] text-[#5b9bff]'
           return (
@@ -228,10 +228,10 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
   }, [])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border-dark bg-surface">
-      <div className="flex items-center gap-2 border-b border-border-dark px-3 py-2">
+    <div className="overflow-hidden rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+      <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.08)] px-3 py-2">
         <Sparkle className="animate-pulse text-[#5b9bff]" />
-        <span className="text-[12px] font-semibold text-content">AI verifying caller</span>
+        <span className="text-[12px] font-semibold text-[#5b9bff]">AI verifying caller</span>
         <span className="ml-auto truncate text-[11px] text-content-muted">{customer.name}</span>
       </div>
 
@@ -316,9 +316,9 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
   return (
     <div className={`flex min-h-0 shrink-0 flex-col gap-3 overflow-y-auto ${narrow ? 'order-1 w-full' : 'w-[320px]'}`}>
       {/* Verify + open */}
-      <div className="rounded-xl border border-border-dark bg-surface p-3">
-        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-subtle">
-          <Sparkle className="text-[#5b9bff]" /> Verify &amp; open client
+      <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a] p-3">
+        <div className="mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5b9bff] pl-2 text-[11px] font-semibold uppercase tracking-wide text-[#5b9bff]">
+          <Sparkle /> Verify &amp; open client
         </div>
         <div className="relative">
           <input
@@ -357,14 +357,14 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
         <VerifyAnimation customer={verifying} />
       ) : client ? (
         <>
-          <div className="rounded-xl border border-border-dark bg-surface">
-            <div className="flex items-center gap-2 border-b border-border-dark px-3 py-2">
+          <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+            <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.15)] px-3 py-2">
               <span className="rounded bg-[rgba(47,208,122,0.16)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-up">✓ Verified</span>
               <span className="truncate text-[13px] font-semibold text-content">{client.name}</span>
               {client.vip && <span className="ml-auto rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b]">VIP</span>}
             </div>
             {/* How the caller was verified */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-dark bg-[#15171a] px-3 py-1.5 text-[10px] text-content-muted">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[rgba(91,155,255,0.15)] bg-[rgba(91,155,255,0.05)] px-3 py-1.5 text-[10px] text-content-muted">
               <span>📞 <span className="tabular-nums text-content">{client.phone}</span> matched</span>
               <span className="text-up">🎙️ {voiceMatchPct(client.sif)}% voice match</span>
               <span className="text-content-subtle">via caller‑ID + voiceprint</span>
@@ -382,7 +382,7 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                 <span>⚠</span><span>{client.flag}</span>
               </div>
             )}
-            <div className="border-t border-border-dark px-3 py-2">
+            <div className="border-t border-[rgba(91,155,255,0.15)] px-3 py-2">
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Top holdings</div>
               <ul className="flex flex-col gap-1">
                 {holdings.slice(0, 4).map((h) => (
@@ -666,12 +666,15 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const ideas = orders.length > 0 ? allIdeas : allIdeas.filter((i) => i.tone !== 'switch')
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-page">
+    <div className="flex h-full min-h-0 flex-col bg-[#07090e]">
       {/* Toolbar */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-dark bg-[#141619] px-3">
-        <span className="flex items-center gap-2 text-[13px] font-semibold text-content">
-          <span className="flex items-center gap-1 rounded bg-[rgba(0,98,255,0.16)] px-1.5 py-0.5 text-[#9cc0ff]"><Sparkle /> AI</span>
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[rgba(91,155,255,0.2)] bg-gradient-to-r from-[#0b1220] via-[#0d1018] to-[#0f1018] px-3">
+        <span className="flex items-center gap-2.5 text-[13px] font-semibold text-content">
+          <span className="flex items-center gap-1 rounded bg-[rgba(91,155,255,0.15)] px-1.5 py-0.5 text-[#5b9bff] ring-1 ring-[rgba(91,155,255,0.3)]"><Sparkle /> AI</span>
           Order Placement · AI
+          <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-[#5b9bff]/60">
+            <span className="inline-block size-1.5 animate-pulse rounded-full bg-[#5b9bff] shadow-[0_0_6px_#5b9bff]" />AI Active
+          </span>
         </span>
         <div className="flex items-center gap-2">
           <button onClick={reset} title="Clear the desk and start a fresh call (temporary)" className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]">
@@ -697,9 +700,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
         {/* AI order flow (center) — below the client column when narrow */}
         <div className={`flex min-w-0 flex-col gap-3 ${wide ? 'min-h-0 flex-1 overflow-y-auto' : 'order-2'}`}>
           {/* Capture request */}
-          <div className="rounded-xl border border-border-dark bg-surface p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-content-subtle">
-              <Sparkle className="text-[#5b9bff]" /> Client request
+          <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a] p-3">
+            <div className="mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5b9bff] pl-2 text-[11px] font-semibold uppercase tracking-wide text-[#5b9bff]">
+              <Sparkle /> Client request
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -794,14 +797,14 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
           {/* AI review — whole basket */}
           {review && client && (
-            <div className="rounded-xl border border-border-dark bg-surface">
-              <div className="flex items-center justify-between border-b border-border-dark px-3 py-2">
-                <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content"><Sparkle className="text-[#5b9bff]" /> AI review &amp; checks</span>
+            <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+              <div className="flex items-center justify-between border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.06)] px-3 py-2">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#5b9bff]"><Sparkle /> AI review &amp; checks</span>
                 <span className="text-[11px] text-content-muted">{review.buys} buy{review.buys === 1 ? '' : 's'} · {review.sells} sell{review.sells === 1 ? '' : 's'}</span>
               </div>
 
               {/* Aggregate across the basket */}
-              <div className="grid grid-cols-4 gap-3 border-b border-border-dark px-3 py-2.5">
+              <div className="grid grid-cols-4 gap-3 border-b border-[rgba(91,155,255,0.15)] px-3 py-2.5">
                 <Field label="Total buys" value={fmtMoney(review.totalBuy)} tone="text-[#9cc0ff]" />
                 <Field label="Total sells" value={fmtMoney(review.totalSell)} tone="text-down" />
                 <Field label="Net cash" value={fmtMoney(review.netCash)} tone={review.short > 0 ? 'text-warning' : 'text-content'} />
@@ -809,7 +812,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
               </div>
 
               {/* Per-line */}
-              <ul className="divide-y divide-border-dark">
+              <ul className="divide-y divide-[rgba(91,155,255,0.12)]">
                 {review.lines.map((l) => {
                   const block = l.issues.some((i) => i.tone === 'block')
                   const warn = l.issues.some((i) => i.tone === 'warn')
@@ -834,7 +837,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
               </ul>
 
               {/* Basket-level checks */}
-              <ul className="divide-y divide-border-dark border-t border-border-dark">
+              <ul className="divide-y divide-[rgba(91,155,255,0.12)] border-t border-[rgba(91,155,255,0.15)]">
                 <CheckRow
                   tone={review.short > 0 ? 'warn' : 'pass'}
                   title="Buying power"
@@ -847,7 +850,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 <CheckRow tone={review.blocked ? 'block' : 'pass'} title="Compliance" detail={review.blocked ? 'One or more lines are blocked — fix them before placing.' : 'All lines clear of restricted / watch lists.'} />
               </ul>
 
-              <div className="flex items-center justify-between gap-3 border-t border-border-dark px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3 border-t border-[rgba(91,155,255,0.15)] px-3 py-2.5">
                 <span className="text-[11px] text-content-muted">{review.blocked ? (review.short > 0 ? 'Not enough cash — move funds from CASA (with the client’s approval) to place.' : 'Resolve the blocking line before placing.') : 'Reviewed — confirm with the client, then place the basket.'}</span>
                 <button onClick={placeOrder} disabled={!canPlace} className="rounded-md px-4 py-1.5 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" style={{ background: review.blocked ? '#5b6472' : BLUE }}>
                   Place {orders.length} order{orders.length > 1 ? 's' : ''}
@@ -887,7 +890,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
         {/* Live call transcript — right column (resizable) or pinned to the bottom when docked. */}
         {(client || verifying || transcript.length > 0) && (
           <div
-            className={`relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-border-dark bg-surface ${wide ? '' : 'h-[220px] w-full'}`}
+            className={`relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[rgba(91,155,255,0.35)] bg-[#05070d] ${wide ? '' : 'h-[220px] w-full'}`}
             style={wide ? { width: transcriptW } : undefined}
           >
             {wide && (
@@ -897,13 +900,13 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 onPointerUp={endResize}
                 onLostPointerCapture={endResize}
                 title="Drag to widen the transcript"
-                className="absolute bottom-0 left-0 top-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-action/60"
+                className="absolute bottom-0 left-0 top-0 z-20 w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-[#5b9bff]/60"
               />
             )}
-            <div className="flex items-center justify-between border-b border-border-dark px-3 py-2">
+            <div className="flex items-center justify-between border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.06)] px-3 py-2">
               <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content"><Sparkle className="text-[#5b9bff]" /> Live call transcript</span>
-              <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-down">
-                <span className="inline-block size-1.5 animate-pulse rounded-full bg-down shadow-[0_0_5px_#ff6b72]" /> Live
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#ff6b72]">
+                <span className="inline-block size-1.5 animate-pulse rounded-full bg-[#ff6b72] shadow-[0_0_5px_#ff6b72]" /> Rec
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">

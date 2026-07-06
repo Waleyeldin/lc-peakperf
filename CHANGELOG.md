@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.3.0
+
+- **Order Placement — distinct "Precision Trading Terminal" identity** — a branded `ORDER PLACEMENT` label with a blue vertical accent bar appears in the toolbar; the toolbar itself uses a deeper, dedicated background. Market Watch panel gains a blue top stripe and a live data indicator dot. Each client section gets a solid blue left-edge accent bar. The available balance area has a subtle blue tint, reinforcing the precision-desk feel.
+- **Order Placement AI — distinct "AI Command Center" identity** — the page uses a cooler, deeper dark background (`#07090e`) that sets it apart from every other screen. The toolbar has a blue-gradient look with an animated "AI Active" pulse badge. All section cards switch from generic gray borders to AI-blue–tinted borders with a darker card background. Section labels ("Verify & open client", "Client request") gain a glowing blue left accent bar and are rendered in AI blue. The live call transcript is now a distinct dark panel with a stronger blue frame, a tinted header, and a "REC" recording indicator.
+
 ## v3.2.9
 
 - **Live transcript streams letter-by-letter** — every new message from Broker, Client or AI in the Order Placement AI call transcript now appears character-by-character (like ChatGPT streaming), with a blinking cursor while it types. Messages already loaded from a saved session show instantly.
