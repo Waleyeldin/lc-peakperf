@@ -1492,6 +1492,7 @@ function DraggablePanel({
           if (!draggingRef.current) {
             if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 5) return
             draggingRef.current = true
+            document.body.style.userSelect = 'none'
             onDragStartPanel(id)
           }
           const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)
@@ -1502,6 +1503,7 @@ function DraggablePanel({
           const wasDragging = draggingRef.current
           draggingRef.current = false
           downRef.current = null
+          document.body.style.userSelect = ''
           if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
           if (!wasDragging) return // plain click, not a drag
           // Released outside this window → tear the panel off to the board.
@@ -1519,7 +1521,7 @@ function DraggablePanel({
           if (over) onDropPanel(over)
           else onDragEndPanel()
         }}
-        onPointerCancel={() => { draggingRef.current = false; downRef.current = null; onDragEndPanel() }}
+        onPointerCancel={() => { draggingRef.current = false; downRef.current = null; document.body.style.userSelect = ''; onDragEndPanel() }}
         title="Drag the header to move · drag off the window to pop out"
         className="absolute left-0 right-0 top-0 z-10 h-11 cursor-move touch-none"
       />
