@@ -1505,12 +1505,15 @@ function DraggablePanel({
           if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
           if (!wasDragging) return // plain click, not a drag
           // Released outside this window → tear the panel off to the board.
+          // Use clientX/Y vs innerWidth/Height instead of screenX/Y because
+          // macOS WKWebView reports screenX/Y in a different coordinate origin
+          // (bottom-left) than Windows (top-left), causing false "outside" hits.
           const outside =
-            e.screenX < window.screenX ||
-            e.screenX > window.screenX + window.outerWidth ||
-            e.screenY < window.screenY ||
-            e.screenY > window.screenY + window.outerHeight
-          if (outside && e.screenX !== 0 && e.screenY !== 0) { onTearOut?.(id, e.screenX, e.screenY); onDragEndPanel(); return }
+            e.clientX < 0 ||
+            e.clientX > window.innerWidth ||
+            e.clientY < 0 ||
+            e.clientY > window.innerHeight
+          if (outside) { onTearOut?.(id, e.screenX, e.screenY); onDragEndPanel(); return }
           const over = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)
             ?.closest('[data-panel-id]')?.getAttribute('data-panel-id') as PanelId | null
           if (over) onDropPanel(over)
