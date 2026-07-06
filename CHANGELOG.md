@@ -1,8 +1,8 @@
 # Changelog
 
-## v3.1.9
+## v3.1.10
 
-- **Fixed in-app update on Intel Mac** — the update check now reliably finds the Intel Mac build. Both Mac builds are generated in the same CI job so they always both appear in the update file.
+- **Mac build is now Apple Silicon native** — the release now ships an ARM-native build only. Install this version once and all future in-app updates will work correctly on M1/M2/M3 Macs.
 
 ## v3.1.8
 
