@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.2.2
+
+- **Fixed horizontal scroll / blank space on the right** — the grid now measures its container width correctly so panels never overflow horizontally.
+
 ## v3.2.1
 
 - **News panel back beside the chart** — News is restored to the top-right of the Graph terminal, alongside the price chart, at the same height.
