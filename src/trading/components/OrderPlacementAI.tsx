@@ -640,12 +640,12 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 </div>
                 {/* Buy section */}
                 {orders.some((o) => o.side === 'buy') && (
-                  <div className="overflow-hidden rounded-lg border border-[rgba(0,98,255,0.28)]">
-                    <div className="flex items-center justify-between bg-[rgba(0,98,255,0.1)] px-2.5 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-[#9cc0ff]">↑ Buy · {orders.filter((o) => o.side === 'buy').length}</span>
-                      <span className="text-[10px] tabular-nums text-[#9cc0ff]/70">{fmtMoney(orders.filter((o) => o.side === 'buy').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
+                  <div className="overflow-hidden rounded-lg border-2 border-[#0062ff] bg-[rgba(0,98,255,0.08)]">
+                    <div className="flex items-center justify-between bg-[#0062ff] px-2.5 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-white">↑ Buy · {orders.filter((o) => o.side === 'buy').length}</span>
+                      <span className="text-[10px] tabular-nums text-white/80">{fmtMoney(orders.filter((o) => o.side === 'buy').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
                     </div>
-                    <ul className="flex flex-col divide-y divide-[rgba(0,98,255,0.1)]">
+                    <ul className="flex flex-col divide-y divide-[rgba(0,98,255,0.25)]">
                       {orders.filter((o) => o.side === 'buy').map((o) => {
                         const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
                         const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0
@@ -666,12 +666,12 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 )}
                 {/* Sell section */}
                 {orders.some((o) => o.side === 'sell') && (
-                  <div className="overflow-hidden rounded-lg border border-[rgba(255,107,114,0.28)]">
-                    <div className="flex items-center justify-between bg-offer-surface px-2.5 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-down">↓ Sell · {orders.filter((o) => o.side === 'sell').length}</span>
-                      <span className="text-[10px] tabular-nums text-down/70">{fmtMoney(orders.filter((o) => o.side === 'sell').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
+                  <div className="overflow-hidden rounded-lg border-2 border-[#e0383d] bg-[rgba(224,56,61,0.08)]">
+                    <div className="flex items-center justify-between bg-[#e0383d] px-2.5 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-white">↓ Sell · {orders.filter((o) => o.side === 'sell').length}</span>
+                      <span className="text-[10px] tabular-nums text-white/80">{fmtMoney(orders.filter((o) => o.side === 'sell').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
                     </div>
-                    <ul className="flex flex-col divide-y divide-[rgba(255,107,114,0.1)]">
+                    <ul className="flex flex-col divide-y divide-[rgba(224,56,61,0.25)]">
                       {orders.filter((o) => o.side === 'sell').map((o) => {
                         const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol)
                         const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0

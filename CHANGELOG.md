@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.2.5
+
+- **Order Basket buy/sell colors stronger** — the Buy and Sell sections in Order Placement AI now use the same bold visual treatment as classic Order Placement: 2px solid blue/red border, solid color header bar, white text on the header. The weaker translucent style is replaced with unmistakable colour.
+
 ## v3.2.4
 
 - **Fixed vertical blank scroll at the bottom** — macOS WKWebView's rubber-band momentum scroll was letting the view bounce past the last panel. `overscroll-behavior: none` disables the bounce, so scroll stops exactly at Time & Sales.
