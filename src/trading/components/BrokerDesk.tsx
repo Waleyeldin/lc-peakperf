@@ -101,7 +101,7 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
           className="h-9 w-full rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
         />
         {sel && (
-          <div className="mt-3 rounded-lg border border-border-dark bg-page p-3">
+          <div className="mt-3 rounded-lg border border-[rgba(0,98,255,0.25)] bg-gradient-to-br from-[#0d1520] to-[#0b0f14] p-3 shadow-[0_0_16px_rgba(0,98,255,0.06)]">
             <div className="flex items-baseline justify-between">
               <div>
                 <div className="flex items-center gap-1.5 text-[14px] font-semibold text-content">
@@ -195,9 +195,12 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: BLUE, background: 'rgba(0,98,255,0.08)' }}>
-      <div className="flex items-center justify-between px-3 py-2 text-white" style={{ background: BLUE }}>
-        <span className="text-[13px] font-bold uppercase tracking-wide">Buy</span>
-        <button onClick={add} className="rounded bg-white/20 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/30">+ Add line</button>
+      <div className="flex items-center justify-between px-3 py-3 text-white" style={{ background: 'linear-gradient(135deg, #0062ff 0%, #0040cc 100%)' }}>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[17px] font-black uppercase tracking-widest">Buy</span>
+          <span className="text-[10px] font-medium text-white/50">↑</span>
+        </div>
+        <button onClick={add} className="rounded-md bg-white/20 px-2.5 py-1 text-[11px] font-semibold ring-1 ring-white/20 hover:bg-white/30">+ Add line</button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3">
         {lines.map((l) => (
@@ -275,9 +278,12 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: RED, background: 'rgba(224,56,61,0.08)' }}>
-      <div className="flex items-center justify-between px-3 py-2 text-white" style={{ background: RED }}>
-        <span className="text-[13px] font-bold uppercase tracking-wide">Sell</span>
-        <span className="text-[11px] opacity-90">holdings & sellable qty</span>
+      <div className="flex items-center justify-between px-3 py-3 text-white" style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[17px] font-black uppercase tracking-widest">Sell</span>
+          <span className="text-[10px] font-medium text-white/50">↓</span>
+        </div>
+        <span className="text-[10px] font-medium uppercase tracking-wide text-white/60">holdings</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {holdings.length === 0 ? (
@@ -358,38 +364,53 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
   }
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-xl border border-border-dark border-l-[3px] border-l-[#0062ff] bg-surface">
+    <section className="shrink-0 overflow-hidden rounded-xl border border-border-dark border-l-[3px] border-l-[#0062ff] bg-surface shadow-[0_4px_32px_rgba(0,0,0,0.35)]">
       {/* Contact / identity header */}
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border-dark bg-[#141619] px-3 py-2">
-        <span className="flex items-center gap-2">
-          <span className="rounded bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[11px] font-bold text-[#9cc0ff]">{customer.sif}</span>
-          <span className="text-[14px] font-semibold text-content">{customer.name}</span>
-          <button
-            onClick={onToggleVip}
-            title={vip ? 'VIP client — click to remove VIP status' : 'Mark this client as VIP'}
-            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
-              vip
-                ? 'bg-[rgba(240,185,11,0.18)] text-[#f0c33b] hover:bg-[rgba(240,185,11,0.3)]'
-                : 'border border-border-dark text-content-subtle hover:bg-[rgba(255,255,255,0.06)] hover:text-content'
-            }`}
-          >
-            {vip ? '★ VIP' : '☆ Mark VIP'}
-          </button>
-        </span>
-        <span className="flex items-center gap-1 text-[12px] text-content-muted">📞 {customer.phone}</span>
-        <span className="flex items-center gap-1 text-[12px]">
-          <span className="text-content-muted">✉ {customer.email}</span>
-          {customer.emailVerified
-            ? <span className="rounded bg-[rgba(47,208,122,0.16)] px-1.5 py-0.5 text-[10px] font-semibold text-up">verified</span>
-            : <span className="rounded bg-[rgba(255,107,114,0.16)] px-1.5 py-0.5 text-[10px] font-semibold text-down">unverified</span>}
-        </span>
-        <button onClick={onClose} title="Close this customer" aria-label="Close this customer" className="ml-auto rounded p-1 text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content">✕</button>
+      <header className="border-b border-border-dark bg-gradient-to-r from-[#0c1320] via-[#0e1118] to-[#0d1015]">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[rgba(0,98,255,0.3)] to-[rgba(0,98,255,0.1)] text-[16px] font-black text-[#7ab0ff] ring-1 ring-[rgba(0,98,255,0.4)] shadow-[0_0_12px_rgba(0,98,255,0.2)]">
+            {customer.name[0]}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[16px] font-bold text-content">{customer.name}</span>
+              <span className="rounded-md bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-[#7ab0ff] ring-1 ring-[rgba(0,98,255,0.35)]">{customer.sif}</span>
+              <button
+                onClick={onToggleVip}
+                title={vip ? 'VIP client — click to remove VIP status' : 'Mark this client as VIP'}
+                className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+                  vip
+                    ? 'bg-[rgba(240,185,11,0.18)] text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.3)]'
+                    : 'border border-border-dark text-content-subtle hover:bg-[rgba(255,255,255,0.06)] hover:text-content'
+                }`}
+              >
+                {vip ? '★ VIP' : '☆ VIP'}
+              </button>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-content-muted">
+              <span>📞 {customer.phone}</span>
+              <span className="flex items-center gap-1">
+                ✉ {customer.email}
+                {customer.emailVerified
+                  ? <span className="rounded bg-[rgba(47,208,122,0.16)] px-1 py-px text-[9px] font-bold text-up">✓ verified</span>
+                  : <span className="rounded bg-[rgba(255,107,114,0.16)] px-1 py-px text-[9px] font-bold text-down">✗</span>}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} title="Close this customer" aria-label="Close this customer" className="shrink-0 rounded-md p-1.5 text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content">✕</button>
+        </div>
       </header>
 
-      {/* Available balance — big and prominent */}
-      <div className="flex items-baseline gap-3 border-b border-border-dark bg-[rgba(0,62,160,0.06)] px-3 py-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-content-muted">Available balance</span>
-        <span className="text-[22px] font-bold leading-none tabular-nums text-content">{fmtMoney(cash)}</span>
+      {/* Available balance — two-stat bar */}
+      <div className="flex items-center justify-between border-b border-border-dark bg-[rgba(0,40,120,0.12)] px-4 py-3">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-content-subtle">Available balance</div>
+          <div className="mt-0.5 text-[26px] font-black leading-none tabular-nums text-content">{fmtMoney(cash)}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-content-subtle">CASA reserve</div>
+          <div className="mt-0.5 text-[16px] font-semibold tabular-nums text-content-muted">{fmtMoney(casaBal)}</div>
+        </div>
       </div>
 
       {/* Step-2 briefing merged in: risk / KYC / day P&L / positions / tenure */}
@@ -408,9 +429,9 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
 
       <div className="flex flex-col gap-3 p-3">
         {/* Portfolio / positions (full width, on top) */}
-        <div className="overflow-hidden rounded-lg border border-border-dark">
-          <div className="flex items-center justify-between border-b border-border-dark bg-[#15171a] px-3 py-1.5">
-            <span className="text-[12px] font-semibold text-content">Portfolio</span>
+        <div className="overflow-hidden rounded-lg border border-border-dark shadow-[0_2px_12px_rgba(0,0,0,0.2)]">
+          <div className="flex items-center justify-between border-b border-border-dark bg-gradient-to-r from-[#0f1318] to-[#141619] px-3 py-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-content-subtle">Portfolio</span>
             <span className="text-[11px] tabular-nums">
               <span className="text-content-muted">MV </span>
               <span className="font-semibold text-content">{fmtMoney(totalMV)}</span>
@@ -664,7 +685,7 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
                       dragSif === c.sif ? 'opacity-50' : ''
                     } ${
                       active
-                        ? 'border-border-dark bg-surface text-content'
+                        ? 'border-border-dark bg-[rgba(0,98,255,0.1)] text-content shadow-[inset_0_1px_0_rgba(0,98,255,0.3)]'
                         : 'border-transparent text-content-muted hover:bg-[rgba(255,255,255,0.05)]'
                     }`}
                   >

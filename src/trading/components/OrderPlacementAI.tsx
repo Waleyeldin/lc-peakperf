@@ -180,7 +180,7 @@ function useWidth<T extends HTMLElement>() {
 function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string) => void }) {
   if (ideas.length === 0) return null
   return (
-    <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+    <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
       <div className="flex items-center gap-1.5 border-b border-[rgba(91,155,255,0.15)] bg-[rgba(91,155,255,0.06)] px-3 py-2 text-[12px] font-semibold text-[#5b9bff]">
         <Sparkle /> What to pitch
         <span className="ml-auto text-[10px] font-normal text-content-subtle">live advisory</span>
@@ -228,7 +228,7 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
   }, [])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+    <div className="overflow-hidden rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
       <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.08)] px-3 py-2">
         <Sparkle className="animate-pulse text-[#5b9bff]" />
         <span className="text-[12px] font-semibold text-[#5b9bff]">AI verifying caller</span>
@@ -316,7 +316,7 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
   return (
     <div className={`flex min-h-0 shrink-0 flex-col gap-3 overflow-y-auto ${narrow ? 'order-1 w-full' : 'w-[320px]'}`}>
       {/* Verify + open */}
-      <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a] p-3">
+      <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)] p-3">
         <div className="mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5b9bff] pl-2 text-[11px] font-semibold uppercase tracking-wide text-[#5b9bff]">
           <Sparkle /> Verify &amp; open client
         </div>
@@ -357,11 +357,11 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
         <VerifyAnimation customer={verifying} />
       ) : client ? (
         <>
-          <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
-            <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.15)] px-3 py-2">
-              <span className="rounded bg-[rgba(47,208,122,0.16)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-up">✓ Verified</span>
-              <span className="truncate text-[13px] font-semibold text-content">{client.name}</span>
-              {client.vip && <span className="ml-auto rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b]">VIP</span>}
+          <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
+            <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.15)] bg-gradient-to-r from-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
+              <span className="rounded-md bg-[rgba(47,208,122,0.18)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-up ring-1 ring-[rgba(47,208,122,0.3)]">✓ Verified</span>
+              <span className="truncate text-[13px] font-bold text-content">{client.name}</span>
+              {client.vip && <span className="ml-auto rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.3)]">★ VIP</span>}
             </div>
             {/* How the caller was verified */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[rgba(91,155,255,0.15)] bg-[rgba(91,155,255,0.05)] px-3 py-1.5 text-[10px] text-content-muted">
@@ -700,7 +700,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
         {/* AI order flow (center) — below the client column when narrow */}
         <div className={`flex min-w-0 flex-col gap-3 ${wide ? 'min-h-0 flex-1 overflow-y-auto' : 'order-2'}`}>
           {/* Capture request */}
-          <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a] p-3">
+          <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)] p-3">
             <div className="mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5b9bff] pl-2 text-[11px] font-semibold uppercase tracking-wide text-[#5b9bff]">
               <Sparkle /> Client request
             </div>
@@ -797,7 +797,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
           {/* AI review — whole basket */}
           {review && client && (
-            <div className="rounded-xl border border-[rgba(91,155,255,0.2)] bg-[#0c0f1a]">
+            <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
               <div className="flex items-center justify-between border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.06)] px-3 py-2">
                 <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#5b9bff]"><Sparkle /> AI review &amp; checks</span>
                 <span className="text-[11px] text-content-muted">{review.buys} buy{review.buys === 1 ? '' : 's'} · {review.sells} sell{review.sells === 1 ? '' : 's'}</span>
@@ -852,7 +852,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
               <div className="flex items-center justify-between gap-3 border-t border-[rgba(91,155,255,0.15)] px-3 py-2.5">
                 <span className="text-[11px] text-content-muted">{review.blocked ? (review.short > 0 ? 'Not enough cash — move funds from CASA (with the client’s approval) to place.' : 'Resolve the blocking line before placing.') : 'Reviewed — confirm with the client, then place the basket.'}</span>
-                <button onClick={placeOrder} disabled={!canPlace} className="rounded-md px-4 py-1.5 text-[13px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" style={{ background: review.blocked ? '#5b6472' : BLUE }}>
+                <button onClick={placeOrder} disabled={!canPlace} className="rounded-md px-4 py-1.5 text-[13px] font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40" style={{ background: review.blocked ? '#5b6472' : BLUE, boxShadow: canPlace ? '0 0 20px rgba(0,98,255,0.5), 0 0 40px rgba(0,98,255,0.2)' : 'none' }}>
                   Place {orders.length} order{orders.length > 1 ? 's' : ''}
                 </button>
               </div>
@@ -911,7 +911,10 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {transcript.length === 0 ? (
-                <div className="py-4 text-center text-[11px] text-content-muted">Connecting call…</div>
+                <div className="flex flex-col items-center gap-2 py-8 text-center text-[11px] text-content-muted">
+                  <span className="inline-block size-2 animate-pulse rounded-full bg-[#5b9bff] shadow-[0_0_8px_#5b9bff]" />
+                  Connecting call…
+                </div>
               ) : (
                 <ul className="flex flex-col gap-2">
                   {transcript.map((t) => {
@@ -919,13 +922,17 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                     return (
                       <li key={t.id} className={t.speaker === 'AI' ? 'flex justify-center' : t.speaker === 'Broker' ? 'flex justify-end' : 'flex justify-start'}>
                         {t.speaker === 'AI' ? (
-                          <span className="flex items-center gap-1.5 rounded-full bg-[rgba(0,98,255,0.1)] px-2.5 py-1 text-[11px] text-[#9cc0ff]">
-                            <Sparkle /><TypedText text={t.text} animate={animate} />
+                          <span className="flex max-w-[90%] items-center gap-1.5 rounded-lg border border-[rgba(91,155,255,0.25)] bg-[rgba(91,155,255,0.07)] px-3 py-1.5 text-[11px] text-[#8bb8ff] shadow-[0_0_12px_rgba(91,155,255,0.08)]">
+                            <Sparkle className="shrink-0 text-[#5b9bff]" /><TypedText text={t.text} animate={animate} />
                           </span>
                         ) : (
-                          <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-[12px] ${t.speaker === 'Broker' ? 'bg-[rgba(0,98,255,0.16)] text-content' : 'bg-[#1f2226] text-content'}`}>
-                            <div className="mb-0.5 flex items-center gap-1.5 text-[9px] uppercase tracking-wide text-content-subtle">
-                              <span className="font-semibold">{t.speaker}</span><span className="tabular-nums normal-case">{t.time}</span>
+                          <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-[12px] ${
+                            t.speaker === 'Broker'
+                              ? 'bg-gradient-to-br from-[rgba(0,98,255,0.25)] to-[rgba(0,98,255,0.14)] ring-1 ring-[rgba(0,98,255,0.3)] text-content'
+                              : 'bg-[rgba(255,255,255,0.05)] ring-1 ring-[rgba(255,255,255,0.08)] text-content'
+                          }`}>
+                            <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-content-subtle">
+                              <span>{t.speaker}</span><span className="tabular-nums font-normal normal-case opacity-60">{t.time}</span>
                             </div>
                             <TypedText text={t.text} animate={animate} />
                           </div>
