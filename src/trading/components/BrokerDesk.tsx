@@ -253,8 +253,8 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
 
         <button
           onClick={() => notify(`Buy order placed — ${lines.length} instrument${lines.length === 1 ? '' : 's'}`, 'buy')}
-          className="mt-2 w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110"
-          style={{ background: 'linear-gradient(135deg, #0062ff 0%, #003dcc 100%)', boxShadow: '0 4px 18px rgba(0,98,255,0.4), 0 0 0 1px rgba(0,98,255,0.5)' }}
+          className="btn-glow-blue mt-2 w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110"
+          style={{ background: 'linear-gradient(135deg, #0062ff 0%, #003dcc 100%)' }}
         >
           ↑ Place {lines.length} Buy{lines.length === 1 ? '' : 's'}
         </button>
@@ -322,8 +322,8 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
         <button
           disabled={selected.length === 0}
           onClick={() => notify(`Sell order placed — ${selected.length} instrument${selected.length === 1 ? '' : 's'}`, 'sell')}
-          className="rounded-lg px-4 py-2 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40"
-          style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)', boxShadow: selected.length > 0 ? '0 4px 18px rgba(224,56,61,0.4), 0 0 0 1px rgba(224,56,61,0.5)' : 'none' }}
+          className={`rounded-lg px-4 py-2 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40 ${selected.length > 0 ? 'btn-glow-red' : ''}`}
+          style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}
         >
           ↓ Place {selected.length} Sell{selected.length === 1 ? '' : 's'}
         </button>
@@ -457,8 +457,8 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
               </tr>
             </thead>
             <tbody>
-              {liveHoldings.map((h) => (
-                <tr key={h.symbol} className="border-t border-border-dark/60">
+              {liveHoldings.map((h, idx) => (
+                <tr key={h.symbol} className={`border-t border-border-dark/60 ${idx % 2 === 0 ? '' : 'bg-[rgba(255,255,255,0.018)]'}`}>
                   <td className="px-3 py-1.5 text-left font-medium text-content">{h.symbol}</td>
                   <td className="px-3 py-1.5 text-right text-content-muted">{fmtInt(h.quantity)}</td>
                   <td className="px-3 py-1.5 text-right text-content-muted">{fmtPrice(h.avgCost)}</td>

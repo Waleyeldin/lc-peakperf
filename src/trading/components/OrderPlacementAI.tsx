@@ -149,7 +149,7 @@ function CheckRow({ tone, title, detail, action }: { tone: CheckTone; title: str
 
 function Field({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg bg-[rgba(91,155,255,0.04)] p-2 ring-1 ring-[rgba(91,155,255,0.1)]">
+    <div className="flex flex-col gap-1 rounded-lg bg-[rgba(91,155,255,0.04)] p-2 ring-1 ring-[rgba(91,155,255,0.1)] transition-transform duration-150 hover:-translate-y-px hover:bg-[rgba(91,155,255,0.07)]">
       <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">{label}</span>
       <span className={`text-[13px] font-semibold tabular-nums ${tone ?? 'text-content'}`}>{value}</span>
     </div>
@@ -265,7 +265,7 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
             </div>
 
             {/* Animated bars — scaleY from centre */}
-            <div className="flex h-10 items-center justify-center gap-[3px]">
+            <div className="flex h-14 items-center justify-center gap-[3px] rounded-lg bg-[rgba(91,155,255,0.05)] px-2">
               {VOICE_BARS.map((bar, i) => (
                 <div key={i} className="h-full flex-1" style={{ maxWidth: '10px' }}>
                   <div
@@ -274,7 +274,8 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
                       backgroundColor: phase === 'matched' ? '#2fd07a' : '#5b9bff',
                       transformOrigin: 'center',
                       transform: phase === 'matched' ? 'scaleY(0.18)' : 'scaleY(0.1)',
-                      transition: phase === 'matched' ? 'transform 0.3s ease, background-color 0.3s ease' : undefined,
+                      transition: phase === 'matched' ? 'transform 0.4s ease, background-color 0.4s ease' : undefined,
+                      boxShadow: phase === 'voice' ? '0 0 8px rgba(91,155,255,0.6)' : undefined,
                       animation: phase === 'voice'
                         ? `voiceBarAnim ${bar.dur} ease-in-out ${bar.delay} infinite alternate`
                         : undefined,
@@ -873,7 +874,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
               <div className="flex items-center justify-between gap-3 border-t border-[rgba(91,155,255,0.15)] px-3 py-2.5">
                 <span className="text-[11px] text-content-muted">{review.blocked ? (review.short > 0 ? 'Not enough cash — move funds from CASA (with the client’s approval) to place.' : 'Resolve the blocking line before placing.') : 'Reviewed — confirm with the client, then place the basket.'}</span>
-                <button onClick={placeOrder} disabled={!canPlace} className="rounded-md px-4 py-1.5 text-[13px] font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40" style={{ background: review.blocked ? '#5b6472' : BLUE, boxShadow: canPlace ? '0 0 20px rgba(0,98,255,0.5), 0 0 40px rgba(0,98,255,0.2)' : 'none' }}>
+                <button onClick={placeOrder} disabled={!canPlace} className={`rounded-md px-4 py-1.5 text-[13px] font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40 ${canPlace ? 'btn-glow-ai' : ''}`} style={{ background: review.blocked ? '#5b6472' : BLUE }}>
                   Place {orders.length} order{orders.length > 1 ? 's' : ''}
                 </button>
               </div>
@@ -882,7 +883,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
           {/* Post-trade */}
           {placed && review && client && (
-            <div className="overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
+            <div className="anim-pop-in overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
               <div className="flex items-center gap-2.5 border-b border-[rgba(47,208,122,0.18)] bg-gradient-to-r from-[rgba(47,208,122,0.14)] via-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-up text-[12px] font-black text-[#060d0a]">✓</span>
                 <span className="text-[13px] font-bold text-up">Orders executed</span>

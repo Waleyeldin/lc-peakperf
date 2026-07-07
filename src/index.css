@@ -240,6 +240,31 @@ body {
   to   { transform: scaleY(1); }
 }
 
+/* ── Glow-pulse animations for Buy / Sell / Place CTAs ───────────────── */
+@keyframes glowPulseBlue {
+  0%, 100% { box-shadow: 0 4px 18px rgba(0,98,255,0.4), 0 0 0 1px rgba(0,98,255,0.5); }
+  50%       { box-shadow: 0 6px 36px rgba(0,98,255,0.75), 0 0 0 1px rgba(0,98,255,0.85); }
+}
+@keyframes glowPulseRed {
+  0%, 100% { box-shadow: 0 4px 18px rgba(224,56,61,0.4), 0 0 0 1px rgba(224,56,61,0.5); }
+  50%       { box-shadow: 0 6px 36px rgba(224,56,61,0.75), 0 0 0 1px rgba(224,56,61,0.85); }
+}
+/* Subtler variant for the AI "Place orders" button */
+@keyframes glowPulseAI {
+  0%, 100% { box-shadow: 0 0 20px rgba(0,98,255,0.45), 0 0 40px rgba(0,98,255,0.18); }
+  50%       { box-shadow: 0 0 32px rgba(0,98,255,0.8),  0 0 60px rgba(0,98,255,0.32); }
+}
+.btn-glow-blue { animation: glowPulseBlue 2.8s ease-in-out infinite; }
+.btn-glow-red  { animation: glowPulseRed  2.8s ease-in-out infinite; }
+.btn-glow-ai   { animation: glowPulseAI   2.4s ease-in-out infinite; }
+
+/* ── Pop-in entrance for confirmation cards ──────────────────────────── */
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+.anim-pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+
 /* Drop-target placeholder in the app accent. */
 .react-grid-item.react-grid-placeholder {
   background: #0062ff !important;
