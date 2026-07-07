@@ -89,45 +89,61 @@ interface PitchIdea { tone: PitchTone; tag: string; headline: string; why: strin
 /** Data-driven pitch ideas from the client's holdings + market momentum. */
 function pitchIdeas(client: DeskCustomer, price: (s: string) => { last: number; changePct: number } | null): PitchIdea[] {
   const ideas: PitchIdea[] = []
+  const conservative = client.risk === 'Conservative'
+  const aggressive = client.risk === 'Aggressive' || client.risk === 'Institutional'
+  const usedSymbols = new Set<string>()
+
+  // 1. Holdings: take profit (near 52-week high) or momentum (strong up day with room left)
   for (const h of client.holdings) {
+    if (ideas.length >= 4) break
     const s = FULL_MARKET.find((x) => x.symbolShortName === h.symbol)
     if (!s) continue
     const q = price(h.symbol)
     const last = q?.last ?? s.lastPrice
     const chg = q?.changePct ?? s.changePct
     const toHigh = s.weekHigh52 > 0 ? (s.weekHigh52 - last) / s.weekHigh52 : 1
-    if (toHigh < 0.05 && chg >= 0) {
-      ideas.push({
-        tone: 'sell', tag: 'Take profit',
-        headline: `${h.symbol} near its 52-week high`,
-        why: `Only ${(toHigh * 100).toFixed(1)}% below the 52-week high (${fmtPrice(s.weekHigh52)}) and ${fmtPct(chg)} today — upside looks limited and it may pull back. Pitch trimming to lock in gains.`,
-        prefill: `Sell ${h.symbol}`,
-      })
-    } else if (chg >= 2) {
-      ideas.push({
-        tone: 'buy', tag: 'Momentum',
-        headline: `${h.symbol} has room to run`,
-        why: `Up ${fmtPct(chg)} today with the 52-week high still ${(toHigh * 100).toFixed(0)}% away (${fmtPrice(s.weekHigh52)}). Pitch holding or adding while momentum lasts.`,
-        prefill: `Buy ${h.symbol}`,
-      })
+    if (toHigh < (conservative ? 0.08 : 0.05) && chg >= 0) {
+      ideas.push({ tone: 'sell', tag: 'Take profit', headline: `${h.symbol} near its 52-week high`, why: `Only ${(toHigh * 100).toFixed(1)}% below the 52-week high (${fmtPrice(s.weekHigh52)}) and ${fmtPct(chg)} today — upside looks limited. Pitch trimming to lock in gains.`, prefill: `Sell ${h.symbol}` })
+      usedSymbols.add(h.symbol)
+    } else if (chg >= (conservative ? 1.5 : 2) && toHigh > 0.05 && (!conservative || Math.abs(chg) <= 3)) {
+      ideas.push({ tone: 'buy', tag: 'Momentum', headline: `${h.symbol} has room to run`, why: `Up ${fmtPct(chg)} today with the 52-week high still ${(toHigh * 100).toFixed(0)}% away (${fmtPrice(s.weekHigh52)}). Pitch holding or adding while momentum lasts.`, prefill: `Buy ${h.symbol}` })
+      usedSymbols.add(h.symbol)
     }
   }
-  const base = FULL_MARKET.find((x) => x.symbolShortName === client.usualStocks[0])
-  if (base) {
-    const baseChg = price(base.symbolShortName)?.changePct ?? base.changePct
-    const alt = FULL_MARKET
-      .filter((x) => x.sector === base.sector && x.symbolShortName !== base.symbolShortName && x.lastPrice > 0)
+
+  // 2. Buy the dip — usual stocks not currently held that are having a down day
+  const holdingSet = new Set(client.holdings.map((h) => h.symbol))
+  const dipThreshold = conservative ? -4 : aggressive ? -2 : -3
+  for (const sym of client.usualStocks) {
+    if (ideas.length >= 4) break
+    if (holdingSet.has(sym) || usedSymbols.has(sym)) continue
+    const s = FULL_MARKET.find((x) => x.symbolShortName === sym)
+    if (!s) continue
+    const chg = price(sym)?.changePct ?? s.changePct
+    if (chg <= dipThreshold) {
+      ideas.push({ tone: 'buy', tag: 'Buy the dip', headline: `${sym} pulling back — entry opportunity`, why: `${sym} is ${fmtPct(chg)} today — a name this client trades regularly. A pullback on a familiar stock can be a clean entry point${conservative ? ' within a conservative mandate' : ''}.`, prefill: `Buy ${sym}` })
+      usedSymbols.add(sym)
+    }
+  }
+
+  // 3. Stronger alternative — scan all usual stocks, find best same-sector peer outperforming by 0.5%+
+  const seenAltTargets = new Set<string>()
+  for (const sym of client.usualStocks) {
+    if (ideas.length >= 4) break
+    const base = FULL_MARKET.find((x) => x.symbolShortName === sym)
+    if (!base) continue
+    const baseChg = price(sym)?.changePct ?? base.changePct
+    const peers = FULL_MARKET
+      .filter((x) => x.sector === base.sector && x.symbolShortName !== sym && x.lastPrice > 0 && !seenAltTargets.has(x.symbolShortName))
       .map((x) => ({ x, c: price(x.symbolShortName)?.changePct ?? x.changePct }))
-      .sort((a, b) => b.c - a.c)[0]
-    if (alt && alt.c > baseChg + 0.5) {
-      ideas.push({
-        tone: 'switch', tag: 'Stronger alternative',
-        headline: `${alt.x.symbolShortName} is outpacing ${base.symbolShortName}`,
-        why: `Same sector (${base.sector}) — ${alt.x.symbolShortName} is ${fmtPct(alt.c)} vs ${base.symbolShortName} ${fmtPct(baseChg)} today. If the client is open to it, pitch switching or diversifying into it.`,
-        prefill: `Buy ${alt.x.symbolShortName}`,
-      })
+    const pool = conservative ? peers.filter((a) => Math.abs(a.c) <= 3) : peers
+    const best = pool.sort((a, b) => b.c - a.c)[0]
+    if (best && best.c > baseChg + 0.5) {
+      seenAltTargets.add(best.x.symbolShortName)
+      ideas.push({ tone: 'switch', tag: 'Stronger alternative', headline: `${best.x.symbolShortName} is outpacing ${sym}`, why: `Same sector (${base.sector}) — ${best.x.symbolShortName} is ${fmtPct(best.c)} vs ${sym} ${fmtPct(baseChg)} today. Pitch switching or diversifying into it.`, prefill: `Buy ${best.x.symbolShortName}` })
     }
   }
+
   return ideas.slice(0, 4)
 }
 
@@ -191,9 +207,8 @@ function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string)
           const accent = idea.tone === 'sell' ? 'border-l-down' : idea.tone === 'buy' ? 'border-l-up' : 'border-l-[#5b9bff]'
           return (
             <li key={i} className={`border-l-2 p-3 ${accent}`}>
-              <div className="mb-1 flex items-center gap-2">
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${chip}`}>{idea.tag}</span>
-                <span className="text-[12px] font-semibold text-content">{idea.headline}</span>
+              <div className="mb-1 text-[12px] font-semibold leading-snug text-content">
+                <span className={`mr-2 inline-block align-middle rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${chip}`}>{idea.tag}</span>{idea.headline}
               </div>
               <p className="text-[11px] leading-relaxed text-content-muted">{idea.why}</p>
               <button onClick={() => onUse(idea.prefill)} className="mt-2 flex items-center gap-1.5 rounded-md border border-[rgba(91,155,255,0.3)] bg-[rgba(91,155,255,0.08)] px-2.5 py-1 text-[10px] font-semibold text-[#7ab0ff] hover:bg-[rgba(91,155,255,0.14)]"><Sparkle className="size-3" /> Use this pitch</button>
@@ -455,6 +470,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const [request, setRequest] = useState(() => snap?.request ?? '')
   const [orders, setOrders] = useState<OrderLine[]>(() => snap?.orders ?? [])
   const [placed, setPlaced] = useState(() => snap?.placed ?? false)
+  const [placeCount, setPlaceCount] = useState(0)
+  const [placedReview, setPlacedReview] = useState<{ buys: number; sells: number; totalBuy: number; totalSell: number; netCash: number } | null>(null)
+  const placedSnapshot = useRef<OrderLine[]>([]) // full basket snapshot at last placement
   const [casaMoved, setCasaMoved] = useState(() => snap?.casaMoved ?? 0) // funds moved from CASA into the trading account
   const lineId = useRef((snap?.orders ?? []).reduce((m, o) => Math.max(m, o.id), 0))
   const makeLine = (side: Side, symbol: string, qty: number): OrderLine => ({ id: ++lineId.current, side, symbol, qty })
@@ -604,6 +622,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   // Broker places the basket → natural confirmation exchange.
   const placeOrder = () => {
     if (!review || review.blocked || orders.length === 0 || !client) return
+    placedSnapshot.current = orders.map((o) => ({ ...o }))
+    setPlacedReview({ buys: review.buys, sells: review.sells, totalBuy: review.totalBuy, totalSell: review.totalSell, netCash: review.netCash })
+    setPlaceCount((c) => c + 1)
     setPlaced(true)
     const first = client.name.split(' ')[0]
     playScript([
@@ -676,7 +697,13 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     return { lines, totalBuy, totalSell, netCash, cash, casaBalance, short, buys, sells, blocked }
   }, [client, orders, price, casaMoved])
 
-  const canPlace = !!review && !review.blocked && !placed && orders.length > 0
+  // True when the basket differs from the last placed snapshot (new line, removed line, or changed qty/side).
+  const hasChanges = placed && (() => {
+    const snap = placedSnapshot.current
+    if (orders.length !== snap.length) return true
+    return orders.some((o) => { const s = snap.find((x) => x.id === o.id); return !s || s.qty !== o.qty || s.side !== o.side })
+  })()
+  const canPlace = !!review && !review.blocked && orders.length > 0 && (!placed || hasChanges)
 
   // Layout: wide → 3-column (like the window); narrow → stacked. Driven by the
   // real width so a widened docked board switches to the window design.
@@ -761,8 +788,8 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 {/* Buy section */}
                 {orders.some((o) => o.side === 'buy') && (
                   <div className="overflow-hidden rounded-lg border-2 border-[#0062ff] bg-[rgba(0,98,255,0.08)]">
-                    <div className="flex items-center justify-between bg-[#0062ff] px-2.5 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-white">↑ Buy · {orders.filter((o) => o.side === 'buy').length}</span>
+                    <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: 'linear-gradient(135deg, #0062ff 0%, #0040cc 100%)' }}>
+                      <span className="text-[13px] font-black uppercase tracking-widest text-white">↑ Buy · {orders.filter((o) => o.side === 'buy').length}</span>
                       <span className="text-[10px] tabular-nums text-white/80">{fmtMoney(orders.filter((o) => o.side === 'buy').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
                     </div>
                     <ul className="flex flex-col divide-y divide-[rgba(0,98,255,0.25)]">
@@ -787,8 +814,8 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 {/* Sell section */}
                 {orders.some((o) => o.side === 'sell') && (
                   <div className="overflow-hidden rounded-lg border-2 border-[#e0383d] bg-[rgba(224,56,61,0.08)]">
-                    <div className="flex items-center justify-between bg-[#e0383d] px-2.5 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-white">↓ Sell · {orders.filter((o) => o.side === 'sell').length}</span>
+                    <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}>
+                      <span className="text-[13px] font-black uppercase tracking-widest text-white">↓ Sell · {orders.filter((o) => o.side === 'sell').length}</span>
                       <span className="text-[10px] tabular-nums text-white/80">{fmtMoney(orders.filter((o) => o.side === 'sell').reduce((a, o) => { const s = FULL_MARKET.find((x) => x.symbolShortName === o.symbol); const last = s ? (price(o.symbol)?.last ?? s.lastPrice) : 0; return a + last * o.qty }, 0))}</span>
                     </div>
                     <ul className="flex flex-col divide-y divide-[rgba(224,56,61,0.25)]">
@@ -817,8 +844,8 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
           {/* Advisory sits between the request and review in the narrow layout. */}
           {!wide && client && <AdvisoryCard ideas={ideas} onUse={setRequest} />}
 
-          {/* AI review — whole basket (hidden once orders are placed) */}
-          {review && client && !placed && (
+          {/* AI review — hidden after placement unless the basket has changed */}
+          {review && client && (!placed || hasChanges) && (
             <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
               <div className="flex items-center justify-between border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.06)] px-3 py-2">
                 <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#5b9bff]"><Sparkle /> AI review &amp; checks</span>
@@ -881,9 +908,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
             </div>
           )}
 
-          {/* Post-trade */}
-          {placed && review && client && (
-            <div className="anim-pop-in shrink-0 overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
+          {/* Post-trade — visible after placement, hidden while broker edits for a new batch */}
+          {placed && placedReview && client && !hasChanges && (
+            <div key={placeCount} className="anim-pop-in shrink-0 overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
               <div className="flex items-center gap-2.5 border-b border-[rgba(47,208,122,0.18)] bg-gradient-to-r from-[rgba(47,208,122,0.14)] via-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-up text-[12px] font-black text-[#060d0a]">✓</span>
                 <span className="text-[13px] font-bold text-up">Orders executed</span>
@@ -891,16 +918,16 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
               </div>
               <div className="grid grid-cols-3 divide-x divide-[rgba(47,208,122,0.1)]">
                 <div className="flex flex-col items-center justify-center gap-0.5 py-3">
-                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{review.buys} Buy{review.buys === 1 ? '' : 's'}</div>
-                  <div className="text-[19px] font-black tabular-nums text-[#5b9bff]">{fmtMoney(review.totalBuy)}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{placedReview.buys} Buy{placedReview.buys === 1 ? '' : 's'}</div>
+                  <div className="text-[19px] font-black tabular-nums text-[#5b9bff]">{fmtMoney(placedReview.totalBuy)}</div>
                 </div>
                 <div className="flex flex-col items-center justify-center gap-0.5 py-3">
-                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{review.sells} Sell{review.sells === 1 ? '' : 's'}</div>
-                  <div className="text-[19px] font-black tabular-nums text-down">{fmtMoney(review.totalSell)}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{placedReview.sells} Sell{placedReview.sells === 1 ? '' : 's'}</div>
+                  <div className="text-[19px] font-black tabular-nums text-down">{fmtMoney(placedReview.totalSell)}</div>
                 </div>
                 <div className="flex flex-col items-center justify-center gap-0.5 py-3">
                   <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">Net cash</div>
-                  <div className="text-[19px] font-black tabular-nums text-up">{fmtMoney(review.netCash)}</div>
+                  <div className="text-[19px] font-black tabular-nums text-up">{fmtMoney(placedReview.netCash)}</div>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 border-t border-[rgba(47,208,122,0.1)] px-3 py-1.5 text-[10px] text-content-subtle">

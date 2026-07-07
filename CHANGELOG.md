@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.3.6
+
+- **Order Placement AI — post-trade card lifecycle** — "Orders executed" now shows immediately after placement, hides while the broker edits the basket for a second batch, and reappears with updated numbers after the second placement. Each submission re-animates the card with a fresh pop-in.
+- **Order Placement AI — re-submit flow** — after placing, modifying any order qty, side, or adding a new line re-enables the AI review card and Place button so the broker can submit a second batch without resetting the session.
+- **Order Placement AI — Buy/Sell basket headers** — the basket section headers now use the same diagonal gradient as the main Order Placement panels (blue for buys, red for sells) with larger, bolder text.
+- **Order Placement AI — "Stronger alternative" tag** — the tag chip is now inline with the headline text so it always sits on one line regardless of column width.
+- **Order Placement AI — What to pitch improvements** — advisory is now risk-aware: Conservative clients get a wider take-profit window and only see low-volatility momentum ideas; Aggressive/Institutional clients get more sensitive signals. New "Buy the dip" idea fires when a stock the client regularly trades pulls back on the day. "Stronger alternative" now scans all usual stocks (not just the first) and avoids duplicate targets.
+
 ## v3.3.5
 
 - **Order Placement AI — post-trade card fix** — the "Orders executed" confirmation card is now always fully visible at any window size. Root cause was the review card filling the column height and squishing the confirmation card to just its top border (a green line). Fix: the review card is now hidden once orders are placed, the post-trade card takes its place, and `shrink-0` prevents WebKit from compressing it regardless of window height.
