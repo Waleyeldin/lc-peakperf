@@ -321,7 +321,7 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
 }
 
 // ── Client column: CIF search + verify + snapshot ────────────────────────────
-function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [] }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[] }) {
+function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [], isVip, onToggleVip }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[]; isVip: (c: DeskCustomer) => boolean; onToggleVip: (c: DeskCustomer) => void }) {
   const [cif, setCif] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const price = usePrices()
@@ -360,7 +360,7 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                   <button onMouseDown={(e) => { e.preventDefault(); open(c) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[rgba(0,98,255,0.12)]">
                     <span className="rounded bg-[rgba(0,98,255,0.2)] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#9cc0ff]">{c.cif}</span>
                     <span className="flex-1 truncate font-medium text-content">{c.name}</span>
-                    {c.vip && <span className="text-[10px] font-bold text-[#f0c33b]">★</span>}
+                    {isVip(c) && <span className="text-[10px] font-bold text-[#f0c33b]">★</span>}
                   </button>
                 </li>
               ))}
@@ -368,7 +368,7 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
           )}
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
-          {DESK_CUSTOMERS.filter((c) => c.vip).map((c) => (
+          {DESK_CUSTOMERS.filter((c) => isVip(c)).map((c) => (
             <button key={c.sif} onClick={() => open(c)} className="rounded border border-[rgba(240,185,11,0.35)] bg-[rgba(240,185,11,0.08)] px-2 py-0.5 text-[10px] text-content-muted hover:text-content" title={`Open ${c.name}`}>
               {c.name}
             </button>
@@ -384,7 +384,13 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
             <div className="flex items-center gap-2 border-b border-[rgba(91,155,255,0.15)] bg-gradient-to-r from-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
               <span className="rounded-md bg-[rgba(47,208,122,0.18)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-up ring-1 ring-[rgba(47,208,122,0.3)]">✓ Verified</span>
               <span className="truncate text-[13px] font-bold text-content">{client.name}</span>
-              {client.vip && <span className="ml-auto rounded bg-[rgba(240,185,11,0.18)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.3)]">★ VIP</span>}
+              <button
+                onClick={() => onToggleVip(client)}
+                title={isVip(client) ? 'VIP client — click to remove VIP status' : 'Mark this client as VIP'}
+                className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${isVip(client) ? 'bg-[rgba(240,185,11,0.18)] text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.3)]' : 'border border-border-dark text-content-subtle hover:bg-[rgba(255,255,255,0.06)] hover:text-content'}`}
+              >
+                {isVip(client) ? '★ VIP' : '☆ VIP'}
+              </button>
             </div>
             {/* How the caller was verified */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[rgba(91,155,255,0.15)] bg-[rgba(91,155,255,0.05)] px-3 py-1.5 text-[10px] text-content-muted">
@@ -414,10 +420,14 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                   <ul className="flex flex-col gap-2">
                     {shown.map((h) => {
                       const pct = Math.round((h.quantity / maxQty) * 100)
+                      const hChg = price(h.symbol)?.changePct ?? 0
                       return (
                         <li key={h.symbol} className="flex flex-col gap-0.5">
                           <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-medium text-content">{h.symbol}</span>
+                            <span className="flex items-center gap-1.5 font-medium text-content">
+                              <span className={`inline-block size-1.5 shrink-0 rounded-full ${hChg >= 0 ? 'bg-up shadow-[0_0_4px_#2fd07a]' : 'bg-down shadow-[0_0_4px_#ff6b72]'}`} />
+                              {h.symbol}
+                            </span>
                             <span className="tabular-nums text-content-muted">{fmtInt(h.quantity)}</span>
                           </div>
                           <div className="h-[3px] overflow-hidden rounded-full bg-[rgba(91,155,255,0.1)]">
@@ -466,12 +476,16 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   // Only the docked (compact) instance restores state — a fresh open starts blank.
   const snap = useMemo(() => (compact ? loadAiSnapshot() : null), [compact])
   const [client, setClient] = useState<DeskCustomer | null>(() => (snap?.clientSif ? DESK_CUSTOMERS.find((c) => c.sif === snap.clientSif) ?? null : null))
+  const [vipMap, setVipMap] = useState<Record<string, boolean>>({})
+  const isVip = (c: DeskCustomer) => vipMap[c.sif] ?? c.vip
+  const toggleVip = (c: DeskCustomer) => setVipMap((m) => ({ ...m, [c.sif]: !(m[c.sif] ?? c.vip) }))
   const [verifying, setVerifying] = useState<DeskCustomer | null>(null)
   const [request, setRequest] = useState(() => snap?.request ?? '')
   const [orders, setOrders] = useState<OrderLine[]>(() => snap?.orders ?? [])
   const [placed, setPlaced] = useState(() => snap?.placed ?? false)
   const [placeCount, setPlaceCount] = useState(0)
   const [placedReview, setPlacedReview] = useState<{ buys: number; sells: number; totalBuy: number; totalSell: number; netCash: number } | null>(null)
+  const [placedAt, setPlacedAt] = useState('')
   const placedSnapshot = useRef<OrderLine[]>([]) // full basket snapshot at last placement
   const [casaMoved, setCasaMoved] = useState(() => snap?.casaMoved ?? 0) // funds moved from CASA into the trading account
   const lineId = useRef((snap?.orders ?? []).reduce((m, o) => Math.max(m, o.id), 0))
@@ -624,6 +638,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     if (!review || review.blocked || orders.length === 0 || !client) return
     placedSnapshot.current = orders.map((o) => ({ ...o }))
     setPlacedReview({ buys: review.buys, sells: review.sells, totalBuy: review.totalBuy, totalSell: review.totalSell, netCash: review.netCash })
+    setPlacedAt(now())
     setPlaceCount((c) => c + 1)
     setPlaced(true)
     const first = client.name.split(' ')[0]
@@ -744,7 +759,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       <div ref={bodyRef} className={`flex min-h-0 flex-1 gap-3 p-3 ${wide ? '' : 'flex-col'}`}>
         {/* Client + order flow. Narrow: scroll together above the pinned transcript. */}
         <div className={wide ? 'contents' : 'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'}>
-        <ClientColumn client={client} onOpen={openClient} verifying={verifying} onUseIdea={(t) => setRequest(t)} narrow={!wide} showAdvisory={wide} ideas={ideas} />
+        <ClientColumn client={client} onOpen={openClient} verifying={verifying} onUseIdea={(t) => setRequest(t)} narrow={!wide} showAdvisory={wide} ideas={ideas} isVip={isVip} onToggleVip={toggleVip} />
 
         {/* AI order flow (center) — below the client column when narrow */}
         <div className={`flex min-w-0 flex-col gap-3 ${wide ? 'min-h-0 flex-1 overflow-y-auto' : 'order-2'}`}>
@@ -932,6 +947,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
               </div>
               <div className="flex items-center gap-1.5 border-t border-[rgba(47,208,122,0.1)] px-3 py-1.5 text-[10px] text-content-subtle">
                 <Sparkle className="text-[#5b9bff]" /> Logged to CRM &amp; audit trail automatically.
+                {placedAt && <span className="ml-auto tabular-nums font-semibold text-content-muted">{placedAt}</span>}
               </div>
             </div>
           )}

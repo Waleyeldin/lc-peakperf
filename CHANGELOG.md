@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.3.7
+
+- **Order Placement (Manual) — Sparkline gradient fill** — the area beneath the MarketWatch sparkline chart now fills with a semi-transparent gradient (green for up, red for down) that fades to transparent at the bottom, giving the chart depth and direction at a glance.
+- **Order Placement (Manual) — Live tick flash** — market table price cells flash green or red for 650 ms whenever the simulated price updates, making live price movement immediately visible without scanning the whole table.
+- **Order Placement (Manual) — Change % badge on Buy lines** — each Buy order line card now shows a small colored chip (e.g. +1.23%) next to the live price, so the broker can see today's move for every stock in the basket without switching to the market table.
+- **Order Placement AI — Execution timestamp** — the post-trade confirmation card footer now shows the exact time the orders were placed (e.g. 03:45:22 PM), right-aligned next to the CRM log note.
+- **Order Placement AI — Live direction dot on holdings** — each symbol in the Top Holdings list now has a glowing green or red dot to its left, updated every price tick, showing at a glance which positions are up or down on the day.
+- **Order Placement AI — VIP toggle** — the ★ VIP button in the verified-client header now toggles correctly: click to promote a client to VIP (gold star, gold badge), click again to remove VIP status. Changes reflect immediately in the client picker and the VIP quick-open strip. Matches the behaviour of the manual Order Placement desk.
+
 ## v3.3.6
 
 - **Order Placement AI — post-trade card lifecycle** — "Orders executed" now shows immediately after placement, hides while the broker edits the basket for a second batch, and reappears with updated numbers after the second placement. Each submission re-animates the card with a fresh pop-in.

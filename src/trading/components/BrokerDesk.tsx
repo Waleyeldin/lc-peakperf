@@ -62,8 +62,17 @@ function Sparkline({ symbol }: { symbol: string }) {
     .join(' ')
   const up = closes[closes.length - 1] >= closes[0]
   const color = up ? '#2fd07a' : RED
+  const fillPts = `${pts} ${w},${h} 0,${h}`
+  const gradId = `sg-${symbol}`
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" className="block">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={fillPts} fill={`url(#${gradId})`} />
       <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
@@ -73,6 +82,26 @@ function Sparkline({ symbol }: { symbol: string }) {
 function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) => void }) {
   const [q, setQ] = useState('')
   const price = usePrices()
+  const prevPricesRef = useRef<Record<string, number>>({})
+  const [tickMap, setTickMap] = useState<Record<string, 'up' | 'down'>>({})
+
+  useEffect(() => {
+    const updates: Record<string, 'up' | 'down'> = {}
+    for (const s of FULL_MARKET) {
+      const cur = price(s.symbolShortName)?.last ?? s.lastPrice
+      const prev = prevPricesRef.current[s.symbolShortName]
+      if (prev !== undefined && Math.abs(cur - prev) > 0.0001) {
+        updates[s.symbolShortName] = cur > prev ? 'up' : 'down'
+      }
+      prevPricesRef.current[s.symbolShortName] = cur
+    }
+    if (Object.keys(updates).length > 0) {
+      setTickMap(updates)
+      const t = setTimeout(() => setTickMap((p) => Object.keys(p).length > 0 ? {} : p), 650)
+      return () => clearTimeout(t)
+    }
+  }, [price])
+
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase()
     return FULL_MARKET.filter(
@@ -86,11 +115,11 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
   const selChgPct = selQ?.changePct ?? sel?.changePct ?? 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-dark border-t-[3px] border-t-[#0062ff] bg-surface">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border-dark px-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[rgba(0,98,255,0.22)] bg-[#07090e] shadow-[0_0_0_1px_rgba(0,98,255,0.04),0_8px_32px_rgba(0,0,0,0.5)]">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[rgba(0,98,255,0.15)] bg-gradient-to-r from-[#0b1220] via-[#0d1018] to-[#0f1018] px-3">
         <span className="inline-block size-1.5 rounded-full bg-up shadow-[0_0_5px_#2fd07a]" title="Live market data" />
-        <h3 className="text-[13px] font-semibold text-content">Market Watch</h3>
-        <span className="text-[11px] text-content-muted">filters the Buy panel</span>
+        <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#5b9bff]">Market Watch</h3>
+        <span className="text-[10px] text-content-subtle">· filters Buy panel</span>
       </header>
 
       <div className="shrink-0 border-b border-border-dark p-3">
@@ -98,10 +127,10 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search symbol… (EMAAR, TALABAT, SALIK)"
-          className="h-9 w-full rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
+          className="h-9 w-full rounded-md border border-[rgba(0,98,255,0.2)] bg-[#0b0e15] px-3 text-[13px] text-content outline-none focus:border-[#5b9bff]"
         />
         {sel && (
-          <div className="mt-3 rounded-lg border border-[rgba(0,98,255,0.25)] bg-gradient-to-br from-[#0d1520] to-[#0b0f14] p-3 shadow-[0_0_16px_rgba(0,98,255,0.06)]">
+          <div className="mt-3 rounded-lg border border-[rgba(0,98,255,0.28)] bg-gradient-to-br from-[#0c1528] to-[#080c14] p-3 shadow-[0_0_24px_rgba(0,98,255,0.1)]">
             <div className="flex items-baseline justify-between">
               <div>
                 <div className="flex items-center gap-1.5 text-[14px] font-semibold text-content">
@@ -131,7 +160,7 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-[12.5px] tabular-nums">
-          <thead className="sticky top-0 z-10 bg-[#15171a] text-[11px] uppercase tracking-wide text-content-muted">
+          <thead className="sticky top-0 z-10 bg-[#0c0e12] text-[11px] uppercase tracking-wide text-content-muted">
             <tr>
               <th className="px-3 py-2 text-left font-medium">Symbol</th>
               <th className="px-3 py-2 text-right font-medium">Last</th>
@@ -147,8 +176,8 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
                 <tr
                   key={s.symbolShortName}
                   onClick={() => onPick(s.symbolShortName)}
-                  className={`cursor-pointer border-b border-border-dark/60 hover:bg-[rgba(255,255,255,0.04)] ${
-                    s.symbolShortName === symbol ? 'bg-[rgba(0,98,255,0.14)]' : ''
+                  className={`cursor-pointer border-b border-[rgba(255,255,255,0.04)] transition-colors hover:bg-[rgba(0,98,255,0.07)] ${
+                    s.symbolShortName === symbol ? 'bg-[rgba(0,98,255,0.18)]' : ''
                   }`}
                 >
                   <td className="px-3 py-1.5 text-left">
@@ -156,8 +185,8 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
                     <span className="font-medium text-content">{s.symbolShortName}</span>
                     <span className="ml-2 text-[11px] text-content-muted">{s.marketShortName}</span>
                   </td>
-                  <td className="px-3 py-1.5 text-right text-content">{fmtPrice(last)}</td>
-                  <td className={`px-3 py-1.5 text-right ${pct >= 0 ? 'text-up' : 'text-down'}`}>{fmtPct(pct)}</td>
+                  <td className={`px-3 py-1.5 text-right text-content${tickMap[s.symbolShortName] === 'up' ? ' tick-up' : tickMap[s.symbolShortName] === 'down' ? ' tick-down' : ''}`}>{fmtPrice(last)}</td>
+                  <td className={`px-3 py-1.5 text-right font-semibold ${pct >= 0 ? 'text-up' : 'text-down'}`}>{fmtPct(pct)}</td>
                 </tr>
               )
             })}
@@ -193,7 +222,7 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
   const short = Math.max(0, Math.round(total - available))
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: BLUE, background: 'rgba(0,98,255,0.08)' }}>
+    <div className="flex flex-1 flex-col overflow-hidden rounded-xl border-2 border-[#0062ff] bg-[rgba(0,98,255,0.05)] shadow-[0_0_0_1px_rgba(0,98,255,0.04),inset_0_1px_0_rgba(0,98,255,0.08)]">
       <div className="flex items-center justify-between px-3 py-3 text-white" style={{ background: 'linear-gradient(135deg, #0062ff 0%, #0040cc 100%)' }}>
         <div className="flex items-baseline gap-2">
           <span className="text-[17px] font-black uppercase tracking-widest">Buy</span>
@@ -201,13 +230,13 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
         </div>
         <button onClick={add} className="rounded-md bg-white/20 px-2.5 py-1 text-[11px] font-semibold ring-1 ring-white/20 hover:bg-white/30">+ Add line</button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto p-2.5">
         {lines.map((l) => (
-          <div key={l.id} className="flex items-center gap-2">
+          <div key={l.id} className="flex items-center gap-2 rounded-lg bg-[rgba(0,98,255,0.07)] p-2 ring-1 ring-[rgba(0,98,255,0.18)] transition-colors hover:bg-[rgba(0,98,255,0.11)]">
             <select
               value={l.symbol}
               onChange={(e) => update(l.id, { symbol: e.target.value })}
-              className="h-8 min-w-0 flex-1 rounded border border-border-dark bg-[#15171a] px-2 text-[12px] text-content outline-none focus:border-action"
+              className="h-8 min-w-0 flex-1 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[12px] text-content outline-none focus:border-[#5b9bff]"
             >
               {FULL_MARKET.map((s) => (
                 <option key={s.symbolShortName} value={s.symbolShortName} className="bg-surface">{s.symbolShortName}</option>
@@ -217,17 +246,29 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
               type="number"
               value={l.qty}
               onChange={(e) => update(l.id, { qty: Math.max(0, +e.target.value) })}
-              className="h-8 w-24 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-action"
+              className="h-8 w-24 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] text-content outline-none focus:border-[#5b9bff]"
             />
-            <span className="w-24 text-right text-[12px] tabular-nums text-content-muted">{fmtPrice(px(l.symbol))}</span>
-            <button onClick={() => remove(l.id)} className="text-content-muted hover:text-down" title="Remove line" aria-label="Remove line">✕</button>
+            <div className="flex w-24 shrink-0 flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] tabular-nums text-[#9cc0ff]">{fmtPrice(px(l.symbol))}</span>
+                {(() => { const chg = price(l.symbol)?.changePct ?? 0; return <span className={`rounded px-1 py-px text-[9px] font-bold tabular-nums ring-1 ${chg >= 0 ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.2)]' : 'bg-[rgba(255,107,114,0.1)] text-down ring-[rgba(255,107,114,0.2)]'}`}>{chg >= 0 ? '+' : ''}{chg.toFixed(2)}%</span> })()}
+              </div>
+              <span className="text-[9px] tabular-nums text-content-subtle">{fmtMoney(l.qty * px(l.symbol))}</span>
+            </div>
+            <button onClick={() => remove(l.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove line" aria-label="Remove line">✕</button>
           </div>
         ))}
       </div>
-      <div className="border-t px-3 py-2" style={{ borderColor: 'rgba(0,98,255,0.35)' }}>
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-content-muted">Est. <span className="font-semibold tabular-nums text-content">{fmtMoney(total)}</span></span>
-          <span className="tabular-nums text-content-muted">Avail {fmtMoney(available)}</span>
+      <div className="border-t border-[rgba(0,98,255,0.25)] px-3 py-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Est. total</div>
+            <div className="text-[15px] font-black tabular-nums text-content">{fmtMoney(total)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Available</div>
+            <div className="text-[13px] font-semibold tabular-nums text-content-muted">{fmtMoney(available)}</div>
+          </div>
         </div>
 
         {/* Only when there isn't enough cash: warn, and reveal the CASA top-up. */}
@@ -276,7 +317,7 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
   const total = selected.reduce((s, h) => s + (qty[h.symbol] ?? 0) * px(h), 0)
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden rounded-lg border-2" style={{ borderColor: RED, background: 'rgba(224,56,61,0.08)' }}>
+    <div className="flex flex-1 flex-col overflow-hidden rounded-xl border-2 border-[#e0383d] bg-[rgba(224,56,61,0.05)] shadow-[0_0_0_1px_rgba(224,56,61,0.04),inset_0_1px_0_rgba(224,56,61,0.08)]">
       <div className="flex items-center justify-between px-3 py-3 text-white" style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}>
         <div className="flex items-baseline gap-2">
           <span className="text-[17px] font-black uppercase tracking-widest">Sell</span>
@@ -284,45 +325,39 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
         </div>
         <span className="text-[10px] font-medium uppercase tracking-wide text-white/60">holdings</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-auto p-2.5">
         {holdings.length === 0 ? (
           <div className="py-6 text-center text-[12px] text-content-muted">No holdings to sell.</div>
         ) : (
-          <table className="w-full text-[12px] tabular-nums">
-            <thead className="text-[10px] uppercase tracking-wide text-content-muted">
-              <tr>
-                <th className="py-1 text-left font-medium">Symbol</th>
-                <th className="py-1 text-right font-medium">Avail.</th>
-                <th className="py-1 text-right font-medium">Price</th>
-                <th className="py-1 text-right font-medium">Sell qty</th>
-              </tr>
-            </thead>
-            <tbody>
-              {holdings.map((h) => (
-                <tr key={h.symbol} className="border-t border-border-dark/60">
-                  <td className="py-1.5 text-left font-medium text-content">{h.symbol}</td>
-                  <td className="py-1.5 text-right text-content-muted">{fmtInt(h.available)}</td>
-                  <td className="py-1.5 text-right text-content">{fmtPrice(px(h))}</td>
-                  <td className="py-1.5 text-right">
-                    <input
-                      type="number"
-                      value={qty[h.symbol] ?? 0}
-                      onChange={(e) => set(h.symbol, +e.target.value, h.available)}
-                      className="h-7 w-20 rounded border border-border-dark bg-[#15171a] px-2 text-right text-[12px] text-content outline-none focus:border-down"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="flex flex-col gap-1.5">
+            {holdings.map((h) => (
+              <div key={h.symbol} className="flex items-center gap-2.5 rounded-lg bg-[rgba(224,56,61,0.07)] p-2 ring-1 ring-[rgba(224,56,61,0.18)] transition-colors hover:bg-[rgba(224,56,61,0.11)]">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-bold text-content">{h.symbol}</div>
+                  <div className="text-[9px] tabular-nums text-content-subtle">{fmtInt(h.available)} avail · {fmtPrice(px(h))}</div>
+                </div>
+                <input
+                  type="number"
+                  value={qty[h.symbol] ?? 0}
+                  onChange={(e) => set(h.symbol, +e.target.value, h.available)}
+                  className="h-7 w-20 rounded border border-[rgba(224,56,61,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] text-content outline-none focus:border-down"
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
-      <div className="flex items-center justify-between border-t px-3 py-2" style={{ borderColor: 'rgba(224,56,61,0.35)' }}>
-        <span className="text-[12px] text-content-muted">Est. {fmtMoney(total)}</span>
+      <div className="border-t border-[rgba(224,56,61,0.25)] px-3 py-2">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Est. total</div>
+            <div className="text-[15px] font-black tabular-nums text-content">{fmtMoney(total)}</div>
+          </div>
+        </div>
         <button
           disabled={selected.length === 0}
           onClick={() => notify(`Sell order placed — ${selected.length} instrument${selected.length === 1 ? '' : 's'}`, 'sell')}
-          className={`rounded-lg px-4 py-2 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40 ${selected.length > 0 ? 'btn-glow-red' : ''}`}
+          className={`w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40 ${selected.length > 0 ? 'btn-glow-red' : ''}`}
           style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}
         >
           ↓ Place {selected.length} Sell{selected.length === 1 ? '' : 's'}
@@ -363,9 +398,9 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
   }
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-xl border border-border-dark border-l-[3px] border-l-[#0062ff] bg-surface shadow-[0_4px_32px_rgba(0,0,0,0.35)]">
+    <section className="shrink-0 overflow-hidden rounded-xl border border-[rgba(0,98,255,0.22)] bg-[#07090e] shadow-[0_0_0_1px_rgba(0,98,255,0.04),0_8px_40px_rgba(0,0,0,0.5)]">
       {/* Contact / identity header */}
-      <header className="border-b border-border-dark bg-gradient-to-r from-[#0c1320] via-[#0e1118] to-[#0d1015]">
+      <header className="border-b border-[rgba(0,98,255,0.15)] bg-gradient-to-r from-[#090f1e] via-[#0b0e18] to-[#0a0d15]">
         <div className="flex items-center gap-3 px-4 py-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[rgba(0,98,255,0.3)] to-[rgba(0,98,255,0.1)] text-[16px] font-black text-[#7ab0ff] ring-1 ring-[rgba(0,98,255,0.4)] shadow-[0_0_12px_rgba(0,98,255,0.2)]">
             {customer.name[0]}
@@ -401,10 +436,10 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
       </header>
 
       {/* Available balance — two-stat bar */}
-      <div className="flex items-center justify-between border-b border-border-dark bg-[rgba(0,40,120,0.12)] px-4 py-3">
+      <div className="flex items-center justify-between border-b border-[rgba(0,98,255,0.12)] bg-gradient-to-r from-[rgba(0,40,120,0.3)] via-[rgba(0,20,80,0.2)] to-transparent px-4 py-3">
         <div>
-          <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-content-subtle">Available balance</div>
-          <div className="mt-0.5 text-[26px] font-black leading-none tabular-nums text-content">{fmtMoney(cash)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#5b9bff] opacity-80">Available balance</div>
+          <div className="mt-0.5 text-[28px] font-black leading-none tabular-nums text-white" style={{ textShadow: '0 0 24px rgba(0,98,255,0.35)' }}>{fmtMoney(cash)}</div>
         </div>
         <div className="text-right">
           <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-content-subtle">CASA reserve</div>
@@ -413,7 +448,7 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
       </div>
 
       {/* Step-2 briefing merged in: risk / KYC / day P&L / positions / tenure */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border-dark bg-[rgba(0,0,0,0.12)] px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[rgba(0,98,255,0.1)] bg-[rgba(0,0,0,0.2)] px-4 py-2">
         <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(0,98,255,0.12)] px-2 py-0.5 text-[10px] font-bold text-[#7ab0ff] ring-1 ring-[rgba(0,98,255,0.2)]">
           <span className="font-normal opacity-70">Risk</span> {customer.risk}
         </span>
@@ -438,9 +473,9 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
 
       <div className="flex flex-col gap-3 p-3">
         {/* Portfolio / positions (full width, on top) */}
-        <div className="overflow-hidden rounded-lg border border-border-dark shadow-[0_2px_12px_rgba(0,0,0,0.2)]">
-          <div className="flex items-center justify-between border-b border-border-dark bg-gradient-to-r from-[#0f1318] to-[#141619] px-3 py-2">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-content-subtle">Portfolio</span>
+        <div className="overflow-hidden rounded-xl border border-[rgba(0,98,255,0.15)] bg-[#0a0c12] shadow-[0_2px_20px_rgba(0,0,0,0.3)]">
+          <div className="flex items-center justify-between border-b border-[rgba(0,98,255,0.12)] bg-gradient-to-r from-[#0d1220] to-[#0c0f18] px-3 py-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-[#5b9bff]">Portfolio</span>
             <span className="text-[11px] tabular-nums">
               <span className="text-content-muted">MV </span>
               <span className="font-semibold text-content">{fmtMoney(totalMV)}</span>
@@ -457,18 +492,26 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
               </tr>
             </thead>
             <tbody>
-              {liveHoldings.map((h, idx) => (
-                <tr key={h.symbol} className={`border-t border-border-dark/60 ${idx % 2 === 0 ? '' : 'bg-[rgba(255,255,255,0.018)]'}`}>
-                  <td className="px-3 py-1.5 text-left font-medium text-content">{h.symbol}</td>
-                  <td className="px-3 py-1.5 text-right text-content-muted">{fmtInt(h.quantity)}</td>
-                  <td className="px-3 py-1.5 text-right text-content-muted">{fmtPrice(h.avgCost)}</td>
-                  <td className={`px-3 py-1.5 text-right ${h.gainLoss >= 0 ? 'text-up' : 'text-down'}`}>{h.gainLoss >= 0 ? '+' : ''}{fmtInt(h.gainLoss)}</td>
-                </tr>
-              ))}
+              {liveHoldings.map((h, idx) => {
+                const barW = Math.min(Math.abs(h.gainLoss / (h.cost || 1)) * 300, 100)
+                return (
+                  <tr key={h.symbol} className={`border-t border-[rgba(255,255,255,0.04)] ${idx % 2 === 0 ? '' : 'bg-[rgba(255,255,255,0.018)]'}`}>
+                    <td className="px-3 py-1.5 text-left">
+                      <div className="font-medium text-content">{h.symbol}</div>
+                      <div className="mt-0.5 h-0.5 w-full max-w-[36px] overflow-hidden rounded-full bg-[rgba(255,255,255,0.07)]">
+                        <div className={`h-full ${h.gainLoss >= 0 ? 'bg-up' : 'bg-down'}`} style={{ width: `${barW}%` }} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-content-muted">{fmtInt(h.quantity)}</td>
+                    <td className="px-3 py-1.5 text-right text-content-muted">{fmtPrice(h.avgCost)}</td>
+                    <td className={`px-3 py-1.5 text-right font-semibold ${h.gainLoss >= 0 ? 'text-up' : 'text-down'}`}>{h.gainLoss >= 0 ? '+' : ''}{fmtInt(h.gainLoss)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {/* Recent activity (from step 2) */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border-dark bg-[#0f1012] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-[rgba(0,98,255,0.1)] bg-[#080a0e] px-3 py-2">
             <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Last trades</span>
             <span className="flex items-center gap-1 rounded-md bg-[rgba(47,208,122,0.09)] px-2 py-0.5 text-[10px] font-medium text-up ring-1 ring-[rgba(47,208,122,0.18)]">
               ↑ {customer.lastBuy.symbol} <span className="tabular-nums">{fmtInt(customer.lastBuy.qty)} @ {fmtPrice(customer.lastBuy.price)}</span>
@@ -593,9 +636,9 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {/* CIF entry — type or pick a client; add several to stack their desks. */}
-      <div className="shrink-0 rounded-xl border border-border-dark bg-surface p-3">
+      <div className="shrink-0 rounded-xl border border-[rgba(0,98,255,0.18)] bg-[#07090e] p-3 shadow-[0_0_0_1px_rgba(0,98,255,0.04)]">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-content-muted">CIF</span>
+          <span className="text-[12px] font-bold text-[#5b9bff]">CIF</span>
           <div className="relative min-w-0 flex-1">
             <input
               value={cif}
@@ -607,7 +650,7 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
                 else if (e.key === 'Escape') setPickerOpen(false)
               }}
               placeholder="Type or select a CIF / client…"
-              className="h-9 w-full rounded-md border border-border-dark bg-[#15171a] px-3 text-[13px] text-content outline-none focus:border-action"
+              className="h-9 w-full rounded-md border border-[rgba(0,98,255,0.2)] bg-[#0b0e15] px-3 text-[13px] text-content outline-none focus:border-[#5b9bff]"
             />
             {pickerOpen && matches.length > 0 && (
               <ul className="absolute left-0 top-full z-30 mt-1 max-h-64 w-full min-w-[300px] overflow-auto rounded-lg border border-border-dark bg-surface shadow-xl">
@@ -654,7 +697,7 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
       {/* Open clients as tabs — switch between them instead of a tall stack. */}
       <div className="flex min-h-0 flex-1 flex-col">
         {open.length === 0 || !activeCustomer ? (
-          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border-dark text-[13px] text-content-muted">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-[rgba(0,98,255,0.15)] bg-[rgba(0,98,255,0.02)] text-[13px] text-[#5b9bff] opacity-50">
             Enter a CIF to open a customer.
           </div>
         ) : (
@@ -698,7 +741,7 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
                       dragSif === c.sif ? 'opacity-50' : ''
                     } ${
                       active
-                        ? 'border-border-dark bg-[rgba(0,98,255,0.1)] text-content shadow-[inset_0_1px_0_rgba(0,98,255,0.3)]'
+                        ? 'border-[rgba(0,98,255,0.3)] bg-[rgba(0,98,255,0.14)] text-content shadow-[inset_0_2px_0_rgba(0,98,255,0.5)]'
                         : 'border-transparent text-content-muted hover:bg-[rgba(255,255,255,0.05)]'
                     }`}
                   >
@@ -783,18 +826,18 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
 
   return (
     <ToastCtx.Provider value={notify}>
-      <div className="flex h-full min-h-0 flex-col">
-        {/* Toolbar: toggle the Market Watch, and (in its own window) dock to main. */}
-        <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border-dark bg-[#0c0f14] px-3">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="h-4 w-[3px] rounded-full bg-[#0062ff]" />
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#4e5565]">Order Placement</span>
+      <div className="flex h-full min-h-0 flex-col bg-[#07090e]">
+        {/* Toolbar */}
+        <div className="flex h-10 shrink-0 items-center gap-3 border-b border-[rgba(0,98,255,0.2)] bg-gradient-to-r from-[#0b1220] via-[#0d1018] to-[#0f1018] px-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="h-4 w-[3px] rounded-full bg-[#0062ff] shadow-[0_0_6px_rgba(0,98,255,0.6)]" />
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#5b9bff]">Order Placement</span>
           </div>
-          <span className="h-4 w-px shrink-0 bg-border-dark" />
+          <span className="h-4 w-px shrink-0 bg-[rgba(0,98,255,0.2)]" />
           <button
             onClick={() => setShowWatch((v) => !v)}
             title="Show or hide the Market Watch panel"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[rgba(0,98,255,0.2)] bg-[rgba(0,98,255,0.06)] px-2.5 py-1 text-[11px] font-medium text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.12)]"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></svg>
             {showWatch ? 'Hide' : 'Show'} Market Watch
@@ -803,7 +846,7 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
             <button
               onClick={handleDock}
               title="Bring this into the main window"
-              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border-dark bg-surface px-2.5 py-1 text-[11px] font-medium text-content hover:bg-[rgba(255,255,255,0.06)]"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-[rgba(0,98,255,0.2)] bg-[rgba(0,98,255,0.06)] px-2.5 py-1 text-[11px] font-medium text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.12)]"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 10l-5 5 5 5" /><path d="M4 15h11a5 5 0 0 0 5-5V4" /></svg>
               Dock to main
