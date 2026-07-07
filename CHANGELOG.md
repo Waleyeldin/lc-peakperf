@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.3.4
+
+- **Order Placement — stat chip strip** — the Risk / KYC / Day P&L / Positions / Since row is now a row of colored badge chips: Risk in blue, KYC in green/amber, Day P&L in green/red, positions and tenure in neutral glass chips. Instantly scannable at a glance.
+- **Order Placement — last-trade tags** — the portfolio footer now shows the last Buy and Sell as colored arrow-tagged pills (green ↑ Buy / red ↓ Sell) instead of plain text.
+- **Order Placement — Market Watch price** — the selected stock price bumps up to 22px bold black with the change displayed as a colored chip badge instead of bare text.
+- **Order Placement — Place Buy / Sell buttons** — both CTA buttons are now taller, full-width gradient. The Buy button breathes a continuous blue glow pulse; the Sell button pulses red the moment a sell quantity is entered.
+- **Order Placement — portfolio row alternation** — every other holdings row gets a hairline tint for faster scanning.
+- **Order Placement AI — Field cards** — the client snapshot fields (CIF, Risk, KYC, Day P&L, Available cash, Portfolio MV) each get a subtle frosted card background with a blue ring outline and a 1 px upward lift on hover.
+- **Order Placement AI — Advisory pitch cards** — each "What to pitch" idea now has a colored vertical left border (green for buy, red for sell, blue for switch) and a Sparkle-prefixed "Use this pitch" button.
+- **Order Placement AI — Top holdings mini-bars** — the client's top 4 holdings each show a proportional gradient bar beneath the symbol/quantity row.
+- **Order Placement AI — Post-trade confirmation** — the execution block has a dark green ambient glow, a gradient header with a circle-check icon, and a three-column stat grid (Buys / Sells / Net cash) with 19 px bold numbers. The card springs in with a pop animation on placement and auto-scrolls into view so the full card is always visible at any window size.
+- **Order Placement AI — Voice match bars** — the voice-analysis bars are taller, sit on a frosted blue background, and glow blue during the analysis phase; the match percentage appears as a large 22 px green number in a highlighted card.
+- **Order Placement AI — Place orders button** — pulses a blue glow when the basket is clear to place.
+
 ## v3.3.3
 
 - **Order Placement — stat chip strip** — the Risk / KYC / Day P&L / Positions / Since row is now a row of colored badge chips: Risk in blue, KYC in green/amber, Day P&L in green/red, positions and tenure in neutral glass chips. Instantly scannable at a glance.
