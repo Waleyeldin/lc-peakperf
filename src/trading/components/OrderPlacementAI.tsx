@@ -455,7 +455,6 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const [request, setRequest] = useState(() => snap?.request ?? '')
   const [orders, setOrders] = useState<OrderLine[]>(() => snap?.orders ?? [])
   const [placed, setPlaced] = useState(() => snap?.placed ?? false)
-  const confirmRef = useRef<HTMLDivElement>(null)
   const [casaMoved, setCasaMoved] = useState(() => snap?.casaMoved ?? 0) // funds moved from CASA into the trading account
   const lineId = useRef((snap?.orders ?? []).reduce((m, o) => Math.max(m, o.id), 0))
   const makeLine = (side: Side, symbol: string, qty: number): OrderLine => ({ id: ++lineId.current, side, symbol, qty })
@@ -679,14 +678,6 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
   const canPlace = !!review && !review.blocked && !placed && orders.length > 0
 
-  // Scroll the confirmation card into view the moment orders are placed, so the
-  // user never sees just the green top-border with content hidden below the fold.
-  useEffect(() => {
-    if (placed && confirmRef.current) {
-      confirmRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
-  }, [placed])
-
   // Layout: wide → 3-column (like the window); narrow → stacked. Driven by the
   // real width so a widened docked board switches to the window design.
   const [bodyRef, bodyW] = useWidth<HTMLDivElement>()
@@ -826,8 +817,8 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
           {/* Advisory sits between the request and review in the narrow layout. */}
           {!wide && client && <AdvisoryCard ideas={ideas} onUse={setRequest} />}
 
-          {/* AI review — whole basket */}
-          {review && client && (
+          {/* AI review — whole basket (hidden once orders are placed) */}
+          {review && client && !placed && (
             <div className="rounded-xl border border-[rgba(91,155,255,0.22)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(91,155,255,0.04),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(91,155,255,0.07)]">
               <div className="flex items-center justify-between border-b border-[rgba(91,155,255,0.2)] bg-[rgba(91,155,255,0.06)] px-3 py-2">
                 <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#5b9bff]"><Sparkle /> AI review &amp; checks</span>
@@ -892,7 +883,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
           {/* Post-trade */}
           {placed && review && client && (
-            <div ref={confirmRef} className="anim-pop-in overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
+            <div className="anim-pop-in shrink-0 overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
               <div className="flex items-center gap-2.5 border-b border-[rgba(47,208,122,0.18)] bg-gradient-to-r from-[rgba(47,208,122,0.14)] via-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-up text-[12px] font-black text-[#060d0a]">✓</span>
                 <span className="text-[13px] font-bold text-up">Orders executed</span>

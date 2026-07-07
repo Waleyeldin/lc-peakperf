@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.3.5
+
+- **Order Placement AI — post-trade card fix** — the "Orders executed" confirmation card is now always fully visible at any window size. Root cause was the review card filling the column height and squishing the confirmation card to just its top border (a green line). Fix: the review card is now hidden once orders are placed, the post-trade card takes its place, and `shrink-0` prevents WebKit from compressing it regardless of window height.
+
 ## v3.3.4
 
 - **Order Placement — stat chip strip** — the Risk / KYC / Day P&L / Positions / Since row is now a row of colored badge chips: Risk in blue, KYC in green/amber, Day P&L in green/red, positions and tenure in neutral glass chips. Instantly scannable at a glance.
