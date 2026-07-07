@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.3.2
+
+- **Order Placement — stat chip strip** — the Risk / KYC / Day P&L / Positions / Since row is now a row of colored badge chips: Risk in blue, KYC in green/amber, Day P&L in green/red, positions and tenure in neutral glass chips. Instantly scannable at a glance.
+- **Order Placement — last-trade tags** — the portfolio footer now shows the last Buy and Sell as colored arrow-tagged pills (green ↑ Buy / red ↓ Sell) instead of plain text.
+- **Order Placement — Market Watch price** — the selected stock price bumps up to 22px bold black with the change displayed as a colored chip badge instead of bare text.
+- **Order Placement — Place Buy / Sell buttons** — both CTA buttons are now taller, full-width gradient with a matching glow shadow and bold uppercase tracking. Unmistakable in the UI.
+- **Order Placement AI — Field cards** — the client snapshot fields (CIF, Risk, KYC, Day P&L, Available cash, Portfolio MV) each get a subtle frosted card background with a blue ring outline.
+- **Order Placement AI — Advisory pitch cards** — each "What to pitch" idea now has a colored vertical left border (green for buy, red for sell, blue for switch) and a Sparkle-prefixed "Use this pitch" button replacing the plain "Prefill" text.
+- **Order Placement AI — Top holdings mini-bars** — the client's top 4 holdings each show a proportional bar beneath the symbol/quantity row, giving an instant visual sense of portfolio concentration.
+- **Order Placement AI — Post-trade confirmation** — the execution block now has a dark green ambient glow, a full-width green gradient header with a circle-check icon, and a three-column stat grid (Buys / Sells / Net cash) with 19px bold numbers.
+- **Order Placement AI — Voice match result** — when the voiceprint clears, the match percentage appears in a large 22px green number inside a highlighted green card before the profile loads.
+
 ## v3.3.1
 
 - **Deeper visual polish on Order Placement** — client cards gain a circular initials avatar with a blue glow, gradient dark header, larger bold name, and a ringed SIF badge. Available balance becomes a two-stat bar (balance + CASA side-by-side in large type). Buy/Sell panel headers are taller with gradient fills and bold tracked uppercase labels. Portfolio section has a gradient header strip. Market Watch stock quote card uses a blue-tinted border with a soft glow. Active client tabs get a subtle blue inner-top highlight.

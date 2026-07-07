@@ -113,10 +113,9 @@ function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) =
                 <div className="text-[11px] text-content-muted">{sel.symbolName}</div>
               </div>
               <div className="text-right">
-                <div className="text-[18px] font-semibold tabular-nums text-content">{fmtPrice(selLast)}</div>
-                <div className={`text-[12px] tabular-nums ${selChg >= 0 ? 'text-up' : 'text-down'}`}>
-                  {selChg >= 0 ? '+' : ''}
-                  {fmtPrice(selChg)} ({fmtPct(selChgPct)})
+                <div className="text-[22px] font-black tabular-nums text-content leading-none">{fmtPrice(selLast)}</div>
+                <div className={`mt-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ring-1 ${selChg >= 0 ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.2)]' : 'bg-[rgba(255,107,114,0.1)] text-down ring-[rgba(255,107,114,0.2)]'}`}>
+                  {selChg >= 0 ? '+' : ''}{fmtPrice(selChg)} ({fmtPct(selChgPct)})
                 </div>
               </div>
             </div>
@@ -254,10 +253,10 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
 
         <button
           onClick={() => notify(`Buy order placed — ${lines.length} instrument${lines.length === 1 ? '' : 's'}`, 'buy')}
-          className="mt-2 w-full rounded-md px-3 py-1.5 text-[12px] font-bold text-white"
-          style={{ background: BLUE }}
+          className="mt-2 w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110"
+          style={{ background: 'linear-gradient(135deg, #0062ff 0%, #003dcc 100%)', boxShadow: '0 4px 18px rgba(0,98,255,0.4), 0 0 0 1px rgba(0,98,255,0.5)' }}
         >
-          Place {lines.length} Buy{lines.length === 1 ? '' : 's'}
+          ↑ Place {lines.length} Buy{lines.length === 1 ? '' : 's'}
         </button>
       </div>
     </div>
@@ -323,10 +322,10 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
         <button
           disabled={selected.length === 0}
           onClick={() => notify(`Sell order placed — ${selected.length} instrument${selected.length === 1 ? '' : 's'}`, 'sell')}
-          className="rounded-md px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-40"
-          style={{ background: RED }}
+          className="rounded-lg px-4 py-2 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40"
+          style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)', boxShadow: selected.length > 0 ? '0 4px 18px rgba(224,56,61,0.4), 0 0 0 1px rgba(224,56,61,0.5)' : 'none' }}
         >
-          Place {selected.length} Sell{selected.length === 1 ? '' : 's'}
+          ↓ Place {selected.length} Sell{selected.length === 1 ? '' : 's'}
         </button>
       </div>
     </div>
@@ -414,12 +413,22 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
       </div>
 
       {/* Step-2 briefing merged in: risk / KYC / day P&L / positions / tenure */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border-dark px-3 py-1.5 text-[11px]">
-        <span className="text-content-muted">Risk <span className="font-medium text-content">{customer.risk}</span></span>
-        <span className="text-content-muted">KYC <span className={`font-medium ${customer.kyc === 'Valid' ? 'text-up' : 'text-warning'}`}>{customer.kyc}</span></span>
-        <span className="text-content-muted">Day P/L <span className={`font-medium ${customer.dayPnlPct >= 0 ? 'text-up' : 'text-down'}`}>{customer.dayPnlPct >= 0 ? '+' : ''}{customer.dayPnlPct.toFixed(1)}%</span></span>
-        <span className="text-content-muted">Positions <span className="font-medium text-content">{customer.positions}</span></span>
-        <span className="text-content-muted">Client since <span className="font-medium text-content">{customer.since}</span></span>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-dark bg-[rgba(0,0,0,0.12)] px-4 py-2">
+        <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(0,98,255,0.12)] px-2 py-0.5 text-[10px] font-bold text-[#7ab0ff] ring-1 ring-[rgba(0,98,255,0.2)]">
+          <span className="font-normal opacity-70">Risk</span> {customer.risk}
+        </span>
+        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ring-1 ${customer.kyc === 'Valid' ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.22)]' : 'bg-[rgba(255,170,0,0.1)] text-warning ring-[rgba(255,170,0,0.22)]'}`}>
+          {customer.kyc === 'Valid' ? '✓' : '!'} KYC {customer.kyc}
+        </span>
+        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${customer.dayPnlPct >= 0 ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.22)]' : 'bg-[rgba(255,107,114,0.1)] text-down ring-[rgba(255,107,114,0.22)]'}`}>
+          Day P/L {customer.dayPnlPct >= 0 ? '+' : ''}{customer.dayPnlPct.toFixed(1)}%
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-0.5 text-[10px] text-content-muted ring-1 ring-[rgba(255,255,255,0.07)]">
+          {customer.positions} positions
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(255,255,255,0.04)] px-2 py-0.5 text-[10px] text-content-subtle ring-1 ring-[rgba(255,255,255,0.06)]">
+          Since {customer.since}
+        </span>
       </div>
       {customer.flag && (
         <div className="flex items-start gap-2 border-b border-[rgba(255,170,0,0.3)] bg-[rgba(255,170,0,0.1)] px-3 py-1.5 text-[11px] text-warning">
@@ -459,10 +468,14 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
             </tbody>
           </table>
           {/* Recent activity (from step 2) */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border-dark bg-[#15171a] px-3 py-1.5 text-[11px]">
-            <span className="uppercase tracking-wide text-content-subtle">Recent</span>
-            <span className="text-content-muted"><span className="font-semibold text-up">Buy</span> {customer.lastBuy.symbol} {fmtInt(customer.lastBuy.qty)} @ {fmtPrice(customer.lastBuy.price)}</span>
-            <span className="text-content-muted"><span className="font-semibold text-down">Sell</span> {customer.lastSell.symbol} {fmtInt(customer.lastSell.qty)} @ {fmtPrice(customer.lastSell.price)}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border-dark bg-[#0f1012] px-3 py-2">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Last trades</span>
+            <span className="flex items-center gap-1 rounded-md bg-[rgba(47,208,122,0.09)] px-2 py-0.5 text-[10px] font-medium text-up ring-1 ring-[rgba(47,208,122,0.18)]">
+              ↑ {customer.lastBuy.symbol} <span className="tabular-nums">{fmtInt(customer.lastBuy.qty)} @ {fmtPrice(customer.lastBuy.price)}</span>
+            </span>
+            <span className="flex items-center gap-1 rounded-md bg-[rgba(255,107,114,0.09)] px-2 py-0.5 text-[10px] font-medium text-down ring-1 ring-[rgba(255,107,114,0.18)]">
+              ↓ {customer.lastSell.symbol} <span className="tabular-nums">{fmtInt(customer.lastSell.qty)} @ {fmtPrice(customer.lastSell.price)}</span>
+            </span>
           </div>
         </div>
 

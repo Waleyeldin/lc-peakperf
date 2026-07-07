@@ -149,9 +149,9 @@ function CheckRow({ tone, title, detail, action }: { tone: CheckTone; title: str
 
 function Field({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-content-muted">{label}</span>
-      <span className={`text-[12px] tabular-nums ${tone ?? 'text-content'}`}>{value}</span>
+    <div className="flex flex-col gap-1 rounded-lg bg-[rgba(91,155,255,0.04)] p-2 ring-1 ring-[rgba(91,155,255,0.1)]">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">{label}</span>
+      <span className={`text-[13px] font-semibold tabular-nums ${tone ?? 'text-content'}`}>{value}</span>
     </div>
   )
 }
@@ -188,14 +188,15 @@ function AdvisoryCard({ ideas, onUse }: { ideas: PitchIdea[]; onUse: (t: string)
       <ul className="divide-y divide-[rgba(91,155,255,0.12)]">
         {ideas.map((idea, i) => {
           const chip = idea.tone === 'sell' ? 'bg-offer-surface text-down' : idea.tone === 'buy' ? 'bg-bid-surface text-up' : 'bg-[rgba(0,98,255,0.14)] text-[#5b9bff]'
+          const accent = idea.tone === 'sell' ? 'border-l-down' : idea.tone === 'buy' ? 'border-l-up' : 'border-l-[#5b9bff]'
           return (
-            <li key={i} className="p-3">
-              <div className="mb-1 flex items-center gap-2">
+            <li key={i} className={`border-l-2 p-3 ${accent}`}>
+              <div className=”mb-1 flex items-center gap-2”>
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${chip}`}>{idea.tag}</span>
-                <span className="text-[12px] font-semibold text-content">{idea.headline}</span>
+                <span className=”text-[12px] font-semibold text-content”>{idea.headline}</span>
               </div>
-              <p className="text-[11px] leading-relaxed text-content-muted">{idea.why}</p>
-              <button onClick={() => onUse(idea.prefill)} className="mt-1.5 rounded border border-border-dark bg-[#1f2226] px-2 py-0.5 text-[10px] font-medium text-content hover:bg-[#262a2f]">Prefill “{idea.prefill}”</button>
+              <p className=”text-[11px] leading-relaxed text-content-muted”>{idea.why}</p>
+              <button onClick={() => onUse(idea.prefill)} className=”mt-2 flex items-center gap-1.5 rounded-md border border-[rgba(91,155,255,0.3)] bg-[rgba(91,155,255,0.08)] px-2.5 py-1 text-[10px] font-semibold text-[#7ab0ff] hover:bg-[rgba(91,155,255,0.14)]”><Sparkle className=”size-3” /> Use this pitch</button>
             </li>
           )
         })}
@@ -285,11 +286,17 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
           </div>
         )}
 
-        {/* Step 3: loading profile indicator */}
+        {/* Step 3: match confirmed + loading */}
         {phase === 'matched' && (
-          <div className="flex items-center gap-1.5 text-[11px] text-content-muted">
-            <Sparkle className="text-[#5b9bff]" />
-            <span>Loading profile &amp; portfolio…</span>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between rounded-lg bg-[rgba(47,208,122,0.08)] px-3 py-2 ring-1 ring-[rgba(47,208,122,0.2)]">
+              <span className="text-[11px] font-bold text-up">Identity confirmed</span>
+              <span className="text-[22px] font-black tabular-nums text-up">{matchPct}<span className="text-[12px] font-medium opacity-70">%</span></span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-content-muted">
+              <Sparkle className="text-[#5b9bff]" />
+              <span>Loading profile &amp; portfolio…</span>
+            </div>
           </div>
         )}
       </div>
@@ -382,16 +389,30 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                 <span>⚠</span><span>{client.flag}</span>
               </div>
             )}
-            <div className="border-t border-[rgba(91,155,255,0.15)] px-3 py-2">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Top holdings</div>
-              <ul className="flex flex-col gap-1">
-                {holdings.slice(0, 4).map((h) => (
-                  <li key={h.symbol} className="flex items-center justify-between text-[11px] tabular-nums">
-                    <span className="font-medium text-content">{h.symbol}</span>
-                    <span className="text-content-muted">{fmtInt(h.quantity)}</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="border-t border-[rgba(91,155,255,0.15)] px-3 py-2.5">
+              <div className="mb-2 text-[9px] font-bold uppercase tracking-widest text-content-subtle">Top holdings</div>
+              {(() => {
+                const shown = holdings.slice(0, 4)
+                const maxQty = Math.max(...shown.map((h) => h.quantity), 1)
+                return (
+                  <ul className="flex flex-col gap-2">
+                    {shown.map((h) => {
+                      const pct = Math.round((h.quantity / maxQty) * 100)
+                      return (
+                        <li key={h.symbol} className="flex flex-col gap-0.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-medium text-content">{h.symbol}</span>
+                            <span className="tabular-nums text-content-muted">{fmtInt(h.quantity)}</span>
+                          </div>
+                          <div className="h-[3px] overflow-hidden rounded-full bg-[rgba(91,155,255,0.1)]">
+                            <div className="h-full rounded-full bg-gradient-to-r from-[rgba(91,155,255,0.6)] to-[rgba(91,155,255,0.3)]" style={{ width: `${pct}%` }} />
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )
+              })()}
             </div>
           </div>
 
@@ -718,13 +739,13 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
             {/* Two demo calls: one funded, one that needs a CASA top-up. */}
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
               <span className="text-content-subtle">Demo calls:</span>
-              <button onClick={dictateFunded} disabled={!client} title="Simulate a call the client can afford" className="flex items-center gap-1.5 rounded-md border border-[rgba(47,208,122,0.4)] bg-bid-surface px-2 py-1 font-medium text-up hover:bg-[rgba(36,161,72,0.2)] disabled:opacity-40">
+              <button onClick={dictateFunded} disabled={!client} title="Simulate a call the client can afford" className="flex items-center gap-1.5 rounded-md border border-[rgba(47,208,122,0.35)] bg-[rgba(47,208,122,0.07)] px-2.5 py-1.5 text-[11px] font-semibold text-up ring-1 ring-[rgba(47,208,122,0.1)] hover:bg-[rgba(47,208,122,0.13)] disabled:opacity-40">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-                Funded — client can afford it
+                Funded call
               </button>
-              <button onClick={dictateShort} disabled={!client} title="Simulate a call that needs a CASA top-up" className="flex items-center gap-1.5 rounded-md border border-[rgba(255,170,0,0.4)] bg-[rgba(255,170,0,0.1)] px-2 py-1 font-medium text-warning hover:bg-[rgba(255,170,0,0.18)] disabled:opacity-40">
+              <button onClick={dictateShort} disabled={!client} title="Simulate a call that needs a CASA top-up" className="flex items-center gap-1.5 rounded-md border border-[rgba(255,170,0,0.35)] bg-[rgba(255,170,0,0.07)] px-2.5 py-1.5 text-[11px] font-semibold text-warning ring-1 ring-[rgba(255,170,0,0.1)] hover:bg-[rgba(255,170,0,0.13)] disabled:opacity-40">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-                Short funds — needs CASA
+                Short funds call
               </button>
             </div>
             {orders.length > 0 && (
@@ -861,26 +882,29 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
 
           {/* Post-trade */}
           {placed && review && client && (
-            <div className="rounded-xl border border-[rgba(47,208,122,0.4)] bg-[rgba(36,161,72,0.08)] p-3">
-              <div className="flex items-center gap-2 text-[13px] font-semibold text-up"><span className="grid size-5 place-items-center rounded-full bg-up text-[11px] text-[#0b0c0d]">✓</span> Confirmation</div>
-              <p className="mt-2 text-[12px] leading-relaxed text-content">
-                Executed for <span className="font-semibold">{client.name}</span> (CIF {client.cif}).
-              </p>
-              <div className="mt-2.5 flex flex-wrap items-end gap-x-8 gap-y-2">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">{review.buys} Buy{review.buys === 1 ? '' : 's'}</div>
-                  <div className="text-[17px] font-bold tabular-nums text-[#5b9bff]">{fmtMoney(review.totalBuy)}</div>
+            <div className="overflow-hidden rounded-xl border border-[rgba(47,208,122,0.45)] bg-[#060d0a]" style={{ boxShadow: '0 0 40px rgba(47,208,122,0.1), 0 0 0 1px rgba(47,208,122,0.12)' }}>
+              <div className="flex items-center gap-2.5 border-b border-[rgba(47,208,122,0.18)] bg-gradient-to-r from-[rgba(47,208,122,0.14)] via-[rgba(47,208,122,0.06)] to-transparent px-3 py-2.5">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-up text-[12px] font-black text-[#060d0a]">✓</span>
+                <span className="text-[13px] font-bold text-up">Orders executed</span>
+                <span className="ml-auto text-[10px] tabular-nums text-content-muted">{client.name} · {client.cif}</span>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-[rgba(47,208,122,0.1)]">
+                <div className="flex flex-col items-center justify-center gap-0.5 py-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{review.buys} Buy{review.buys === 1 ? '' : 's'}</div>
+                  <div className="text-[19px] font-black tabular-nums text-[#5b9bff]">{fmtMoney(review.totalBuy)}</div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">{review.sells} Sell{review.sells === 1 ? '' : 's'}</div>
-                  <div className="text-[17px] font-bold tabular-nums text-down">{fmtMoney(review.totalSell)}</div>
+                <div className="flex flex-col items-center justify-center gap-0.5 py-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">{review.sells} Sell{review.sells === 1 ? '' : 's'}</div>
+                  <div className="text-[19px] font-black tabular-nums text-down">{fmtMoney(review.totalSell)}</div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-muted">Net cash</div>
-                  <div className="text-[17px] font-bold tabular-nums text-content">{fmtMoney(review.netCash)}</div>
+                <div className="flex flex-col items-center justify-center gap-0.5 py-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-content-subtle">Net cash</div>
+                  <div className="text-[19px] font-black tabular-nums text-up">{fmtMoney(review.netCash)}</div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-content-muted"><Sparkle className="text-[#5b9bff]" /> Logged to CRM &amp; audit trail automatically.</div>
+              <div className="flex items-center gap-1.5 border-t border-[rgba(47,208,122,0.1)] px-3 py-1.5 text-[10px] text-content-subtle">
+                <Sparkle className="text-[#5b9bff]" /> Logged to CRM &amp; audit trail automatically.
+              </div>
             </div>
           )}
         </div>
