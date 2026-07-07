@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.3.2
+## v3.3.3
 
 - **Order Placement — stat chip strip** — the Risk / KYC / Day P&L / Positions / Since row is now a row of colored badge chips: Risk in blue, KYC in green/amber, Day P&L in green/red, positions and tenure in neutral glass chips. Instantly scannable at a glance.
 - **Order Placement — last-trade tags** — the portfolio footer now shows the last Buy and Sell as colored arrow-tagged pills (green ↑ Buy / red ↓ Sell) instead of plain text.
