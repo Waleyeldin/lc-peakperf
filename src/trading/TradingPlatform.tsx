@@ -505,23 +505,6 @@ function UserMenu({ onCheckUpdates }: { onCheckUpdates: () => void }) {
   )
 }
 
-/** Market selector for the active Graph tab (DFM real-time / ADX simulated). */
-function MarketTabSelect({ market, onChange }: { market: MarketCode; onChange: (m: MarketCode) => void }) {
-  return (
-    <div className="relative" title="Switch this tab's market — DFM is real-time, ADX is simulated">
-      <select
-        value={market}
-        onChange={(e) => onChange(e.target.value as MarketCode)}
-        className="h-8 appearance-none rounded-md border border-white/10 bg-white/5 pl-2.5 pr-8 text-[13px] text-white outline-none focus:border-[#5b9bff]"
-      >
-        {TAB_MARKETS.map((m) => (
-          <option key={m} value={m} className="bg-surface">{MARKET_TAB_SHORT[m]} · {MARKET_TAB_LABEL[m]}</option>
-        ))}
-      </select>
-      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/60" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-    </div>
-  )
-}
 
 export default function TradingPlatform() {
   const [openSection, setOpenSection] = useState<Section>('Pricing')
@@ -689,9 +672,6 @@ export default function TradingPlatform() {
     setTabs((prev) => [...prev, { id, title: 'New Tab', kind: 'placeholder' }])
     setActiveTab(id)
   }
-  // Change the active tab's market (drives the Graph terminal's dataset).
-  const setTabMarket = (id: string, m: MarketCode) =>
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, market: m, title: MARKET_TAB_LABEL[m], kind: 'workspace' } : t)))
   // "+" → pick a market → open a fresh Graph terminal bound to it.
   const openMarketTab = (m: MarketCode) => {
     const id = `m${Date.now()}`
