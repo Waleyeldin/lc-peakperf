@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.4.2
+
+- **Branding — FAB x Trade wordmark** — the header logo is now a single inline SVG combining the FAB letterforms and red chevron with a "TRADE" wordmark in Barlow Condensed Bold. The SVG viewBox is tight-cropped so the logo fills its container height with no padding.
+- **Graph mode — news as persistent sidebar** — clicking a news story in graph mode now opens a persistent right-side panel that pushes the chart grid left. The panel stays open while navigating within graph mode instead of disappearing on panel change.
+- **Top nav — market news sidebar** — a persistent news panel is now available from the right edge of the app. It supports a two-panel flow: a list view (all stories, matching graph mode visual style — time · source · category meta above headline, symbol chips, blue hover) and a story view (full article with source, category, sentiment, headline, summary, body, related symbols).
+- **News — right-edge pull tab** — when the news sidebar is closed, a slim pull tab is always visible on the right edge with a FAB blue left-border accent, newspaper icon, "News" label (rotated), and a blue story-count badge. No pulsing animation.
+- **News sidebar — drag-to-resize** — the left edge of the news sidebar is now a drag handle. Pull it left to widen or right to narrow the panel (240 px min, 700 px max). The cursor changes to `col-resize` on hover.
+
 ## v3.4.1
 
 - **App icon — FAB logo** — the desktop/dock/taskbar icon is now the real First Abu Dhabi Bank logo (navy blue FAB wordmark with red chevron on white), replacing the generic placeholder. All platform sizes regenerated (macOS ICNS, Windows ICO, Windows Store tiles, PNG variants).

@@ -16,7 +16,8 @@ import MarketDepthDetail from './components/MarketDepthDetail'
 import PortfolioScreen from './components/PortfolioScreen'
 import ChartsScreen from './components/ChartsScreen'
 import Placeholder from './components/Placeholder'
-import FabTerminal from './components/FabTerminal'
+import FabTerminal, { NEWS, type NewsItem } from './components/FabTerminal'
+import FabTradeLogo from './components/FabTradeLogo'
 import BrokerDesk from './components/BrokerDesk'
 import OrderPlacementAI from './components/OrderPlacementAI'
 import UpdaterModal from './components/UpdaterModal'
@@ -506,6 +507,7 @@ function UserMenu({ onCheckUpdates }: { onCheckUpdates: () => void }) {
 }
 
 
+
 export default function TradingPlatform() {
   const [openSection, setOpenSection] = useState<Section>('Pricing')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['Pricing/Basic']))
@@ -518,6 +520,26 @@ export default function TradingPlatform() {
 
   const openTrade = (symbol: Symbol, side: Side) => setTrade({ open: true, side, symbol })
   const [updaterOpen, setUpdaterOpen] = useState(false)
+  const [newsOpen, setNewsOpen] = useState(false)
+  const [newsStory, setNewsStory] = useState<NewsItem | null>(null)
+  const [newsW, setNewsW] = useState(360)
+  const newsResizeRef = useRef<{ start: number; startSize: number } | null>(null)
+  const beginNewsResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    newsResizeRef.current = { start: e.clientX, startSize: newsW }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveNewsResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const ctx = newsResizeRef.current
+    if (!ctx) return
+    // dragging left (smaller clientX) = wider sidebar, so sign = -1
+    const next = ctx.startSize + (ctx.start - e.clientX)
+    setNewsW(Math.max(240, Math.min(700, next)))
+  }
+  const endNewsResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    newsResizeRef.current = null
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
 
   // ── Document tabs ──────────────────────────────────────────────
   const navigate = useNavigate()
@@ -764,8 +786,8 @@ export default function TradingPlatform() {
     <div className="relative flex h-screen flex-col overflow-hidden bg-page text-content">
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border-dark bg-[#0b1b4d] px-4">
-        <Link to="/" className="flex items-center gap-2 text-white" title="FAB x Trade">
-          <span className="text-[15px] font-bold tracking-tight">FAB <span className="text-[#5b9bff] font-light">x</span> Trade</span>
+        <Link to="/" className="flex items-center text-white" title="FAB x Trade">
+          <FabTradeLogo className="h-9 w-auto" />
         </Link>
         <span className="text-white/30">/</span>
         <span className="text-[13px] font-medium text-white/80">{current.title}</span>
@@ -1010,6 +1032,130 @@ export default function TradingPlatform() {
           </div>
         </aside>
       )}
+      {/* ── News — pull tab when closed, full sidebar when open ── */}
+      <aside
+        className={`relative flex shrink-0 flex-col border-l border-border-dark bg-[#111315] transition-[width] duration-300 ${
+          newsOpen ? '' : 'w-10'
+        }`}
+        style={newsOpen ? { width: newsW } : undefined}
+      >
+        {newsOpen && (
+          /* Drag handle — left edge, grabs to resize */
+          <div
+            className="absolute bottom-0 left-0 top-0 z-20 w-1 cursor-col-resize hover:bg-action/40 active:bg-action/60"
+            onPointerDown={beginNewsResize}
+            onPointerMove={moveNewsResize}
+            onPointerUp={endNewsResize}
+            onLostPointerCapture={endNewsResize}
+          />
+        )}
+        {!newsOpen ? (
+          /* Pull tab */
+          <button
+            onClick={() => setNewsOpen(true)}
+            className="group flex h-full w-full flex-col items-center justify-center gap-3 border-l-2 border-l-[#00468c]/60 bg-[#111315] transition-colors hover:border-l-[#00468c] hover:bg-white/5"
+            title="Market News"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-content-muted transition-colors group-hover:text-content"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z" /></svg>
+            <span className="[writing-mode:vertical-rl] rotate-180 text-[10px] font-bold uppercase tracking-widest text-content-muted transition-colors group-hover:text-content">News</span>
+            <span className="rounded bg-[rgba(0,70,140,0.4)] px-1 py-0.5 text-[9px] font-semibold tabular-nums text-[#7aabff]">{NEWS.length}</span>
+          </button>
+        ) : (
+        <>
+        {/* Header — shows back arrow when reading a story */}
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border-dark px-3">
+          {newsStory ? (
+            <button onClick={() => setNewsStory(null)} className="flex items-center gap-1.5 rounded px-2 py-1 text-[12px] text-content-muted hover:bg-white/6 hover:text-content" aria-label="Back to list">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+              <span className="whitespace-nowrap">All stories</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-content-muted"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z" /></svg>
+              <span className="whitespace-nowrap text-[13px] font-semibold text-content">Market News</span>
+            </div>
+          )}
+          <button onClick={() => { setNewsOpen(false); setNewsStory(null) }} className="ml-auto rounded p-1 text-content-muted hover:bg-white/6 hover:text-content" aria-label="Close news">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {newsStory ? (
+          /* ── Story view ── */
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <article className="flex flex-col gap-4 p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[rgba(0,98,255,0.15)] px-2.5 py-0.5 text-[11px] font-semibold text-[#5b9bff]">{newsStory.source}</span>
+                <span className="rounded bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-content-muted">{newsStory.category}</span>
+                <span className={`ml-auto text-[11px] font-semibold ${newsStory.sentiment === 'up' ? 'text-up' : newsStory.sentiment === 'down' ? 'text-down' : 'text-flat'}`}>
+                  {newsStory.sentiment === 'up' ? '▲ Positive' : newsStory.sentiment === 'down' ? '▼ Negative' : '— Neutral'}
+                </span>
+              </div>
+              <h2 className="text-[17px] font-semibold leading-snug text-content">{newsStory.headline}</h2>
+              <p className="text-[13px] font-medium leading-relaxed text-content-muted">{newsStory.summary}</p>
+              <div className="h-px bg-border-dark" />
+              <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-content-muted">
+                {newsStory.body.map((p, i) => <p key={i}>{p}</p>)}
+              </div>
+              {newsStory.symbols.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Related symbols</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {newsStory.symbols.map((s) => (
+                      <span key={s} className="rounded-md bg-[rgba(0,98,255,0.12)] px-2 py-1 text-[11px] font-semibold text-[#5b9bff]">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </article>
+          </div>
+        ) : (
+          /* ── List view — matches graph mode NewsRow style ── */
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border-dark bg-[#111315]/95 px-4 py-1.5 backdrop-blur">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">All Stories</span>
+              <span className="ml-auto text-[10px] tabular-nums text-content-subtle">{NEWS.length}</span>
+            </div>
+            <ul>
+              {NEWS.map((item: NewsItem) => {
+                const dot = item.sentiment === 'up' ? 'bg-up' : item.sentiment === 'down' ? 'bg-down' : 'bg-flat'
+                return (
+                  <li key={item.id} className="border-b border-border-dark last:border-0">
+                    <button
+                      onClick={() => setNewsStory(item)}
+                      className="group flex w-full items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-[rgba(0,98,255,0.08)]"
+                    >
+                      <span className={`mt-[14px] h-2 w-2 shrink-0 rounded-full ${dot}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-1.5 text-[10px] text-content-subtle">
+                          <span className="tabular-nums">{item.time}</span>
+                          <span>·</span>
+                          <span className="font-medium text-content-muted">{item.source}</span>
+                          <span className="ml-auto rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide">{item.category}</span>
+                        </div>
+                        <p className="text-[12.5px] font-medium leading-snug text-content transition-colors group-hover:text-white">{item.headline}</p>
+                        {item.symbols.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {item.symbols.slice(0, 4).map((s) => (
+                              <span key={s} className="rounded bg-[rgba(0,98,255,0.12)] px-1.5 py-px text-[10px] font-medium text-[#5b9bff]">{s}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <svg className="mt-1 shrink-0 text-content-subtle opacity-0 transition-opacity group-hover:opacity-100" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        </>
+        )}
+      </aside>
+
       </div>{/* end body / docked-board split */}
 
       {/* ── Overlays ────────────────────────────────────────────── */}

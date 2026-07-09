@@ -785,7 +785,7 @@ export interface NewsItem {
   body: string[]
 }
 
-const NEWS: NewsItem[] = [
+export const NEWS: NewsItem[] = [
   {
     id: 'n1', time: '10:42', source: 'Reuters', category: 'Markets', sentiment: 'up',
     symbols: ['EMAAR', 'EMAARDEV', 'DAMAC', 'DEYAAR'],
@@ -1696,39 +1696,96 @@ export default function FabTerminal({ onTrade, onBrokerFlow, onOrderAI, market =
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-page">
       <Header selected={selected} onSelect={setSelected} resetLayout={resetLayout} canReset={isCustomized} market={market} symbols={marketSymbolList} hidden={hiddenPanels} onShow={handleShow} />
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
-        <TerminalGrid
-          layout={gridLayout}
-          cols={GRID_COLS}
-          rowHeight={GRID_ROW_H}
-          margin={[12, 12]}
-          containerPadding={[12, 12]}
-          draggableHandle=".fab-panel-handle"
-          compactType="vertical"
-          isDraggable
-          isResizable
-          resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
-          isBounded={true}
-          onLayoutChange={(l: RGLLayout) => setGridLayout([...l])}
-        >
-          {gridLayout.map((item) => {
-            const id = item.i as PanelId
-            const def = panels[id]
-            if (!def) return null
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Grid */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
+          <TerminalGrid
+            layout={gridLayout}
+            cols={GRID_COLS}
+            rowHeight={GRID_ROW_H}
+            margin={[12, 12]}
+            containerPadding={[12, 12]}
+            draggableHandle=".fab-panel-handle"
+            compactType="vertical"
+            isDraggable
+            isResizable
+            resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
+            isBounded={true}
+            onLayoutChange={(l: RGLLayout) => setGridLayout([...l])}
+          >
+            {gridLayout.map((item) => {
+              const id = item.i as PanelId
+              const def = panels[id]
+              if (!def) return null
+              return (
+                <div key={id}>
+                  <PanelCard id={id} highlight={flashId === id} onTearOut={popOut} onHide={handleHide}>
+                    {def.render()}
+                  </PanelCard>
+                </div>
+              )
+            })}
+          </TerminalGrid>
+        </div>
+
+        {/* Persistent news story sidebar — takes real layout space, no overlay */}
+        <aside className={`flex shrink-0 flex-col border-l border-border-dark bg-[#111315] transition-all duration-300 overflow-hidden ${newsItem ? 'w-[420px]' : 'w-0'}`}>
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-border-dark px-4">
+            <span className="whitespace-nowrap text-[13px] font-semibold text-content">Story</span>
+            <button onClick={() => setNewsItem(null)} className="rounded p-1 text-content-muted hover:bg-white/6 hover:text-content" aria-label="Close story">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
+          {newsItem && (() => {
+            const sentimentTone = newsItem.sentiment === 'up' ? 'up' : newsItem.sentiment === 'down' ? 'down' : 'neutral'
+            const sentimentLabel = newsItem.sentiment === 'up' ? '▲ Positive' : newsItem.sentiment === 'down' ? '▼ Negative' : '— Neutral'
+            const related = newsItem.symbols.map(bySymbol).filter((s): s is Symbol => Boolean(s))
             return (
-              <div key={id}>
-                <PanelCard id={id} highlight={flashId === id} onTearOut={popOut} onHide={handleHide}>
-                  {def.render()}
-                </PanelCard>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <article className="flex flex-col gap-4 p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="info">{newsItem.source}</Badge>
+                    <span className="rounded bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-content-muted">{newsItem.category}</span>
+                    <Badge tone={sentimentTone}>{sentimentLabel}</Badge>
+                    <span className="ml-auto text-[11px] tabular-nums text-content-subtle">Today · {newsItem.time}</span>
+                  </div>
+                  <h2 className="text-[19px] font-semibold leading-snug text-content">{newsItem.headline}</h2>
+                  <p className="text-[13px] font-medium leading-relaxed text-content-muted">{newsItem.summary}</p>
+                  <div className="h-px bg-border-dark" />
+                  <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-content-muted">
+                    {newsItem.body.map((p, i) => <p key={i}>{p}</p>)}
+                  </div>
+                  {related.length > 0 && (
+                    <div className="mt-1 flex flex-col gap-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-content-subtle">Related symbols</div>
+                      <ul className="flex flex-col gap-1.5">
+                        {related.map((s) => {
+                          const tone = s.changePct > 0 ? 'text-up' : s.changePct < 0 ? 'text-down' : 'text-flat'
+                          return (
+                            <li key={s.id}>
+                              <button type="button" onClick={() => { setSelected(s); setNewsItem(null) }}
+                                className="flex w-full items-center gap-2.5 rounded-lg border border-border-dark bg-[#15171a] px-3 py-2 text-left transition-colors hover:border-action/50 hover:bg-[rgba(0,98,255,0.08)]">
+                                <span className="w-20 shrink-0 text-[12px] font-semibold text-content">{s.symbolShortName}</span>
+                                <span className="flex-1 truncate text-[11px] text-content-muted" title={s.symbolName}>{s.symbolName}</span>
+                                <span className="shrink-0 tabular-nums text-[12px] text-content">{fmtPrice(s.lastPrice)}</span>
+                                <span className={`w-14 shrink-0 text-right tabular-nums text-[12px] ${tone}`}>{fmtPct(s.changePct)}</span>
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </article>
               </div>
             )
-          })}
-        </TerminalGrid>
+          })()}
+        </aside>
       </div>
+
       <HotkeyBar onTrigger={runHotkey} />
       <TickerTape tick={tick} />
       <HotkeyHelp open={helpOpen} onClose={() => setHelpOpen(false)} onTrigger={runHotkey} />
-      <NewsDrawer item={newsItem} onClose={() => setNewsItem(null)} onSelectSymbol={setSelected} />
     </div>
   )
 }

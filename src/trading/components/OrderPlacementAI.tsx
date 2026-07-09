@@ -21,7 +21,7 @@ const fmtMoney = (n: number) => 'AED ' + Math.round(n).toLocaleString('en-US')
 
 type Side = 'buy' | 'sell'
 interface OrderLine { id: number; side: Side; symbol: string; qty: number }
-interface WishlistItem { id: number; symbol: string; qty: number; targetPrice: number }
+interface WatchlistItem { id: number; symbol: string; qty: number; targetPrice: number }
 type CheckTone = 'pass' | 'warn' | 'block' | 'info'
 
 // ── Little AI mark ───────────────────────────────────────────────────────────
@@ -322,7 +322,7 @@ function VerifyAnimation({ customer }: { customer: DeskCustomer }) {
 }
 
 // ── Client column: CIF search + verify + snapshot ────────────────────────────
-function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [], isVip, onToggleVip, wishlist = [], onAddToWishlist, onRemoveFromWishlist, onConfirmWishlist }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[]; isVip: (c: DeskCustomer) => boolean; onToggleVip: (c: DeskCustomer) => void; wishlist?: WishlistItem[]; onAddToWishlist?: (symbol: string, targetPrice: number, qty: number) => void; onRemoveFromWishlist?: (id: number) => void; onConfirmWishlist?: (item: WishlistItem) => void }) {
+function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdvisory, ideas = [], isVip, onToggleVip, watchlist = [], onAddToWatchlist, onRemoveFromWatchlist, onConfirmWatchlist }: { client: DeskCustomer | null; onOpen: (c: DeskCustomer) => void; verifying: DeskCustomer | null; onUseIdea?: (text: string) => void; narrow?: boolean; showAdvisory?: boolean; ideas?: PitchIdea[]; isVip: (c: DeskCustomer) => boolean; onToggleVip: (c: DeskCustomer) => void; watchlist?: WatchlistItem[]; onAddToWatchlist?: (symbol: string, targetPrice: number, qty: number) => void; onRemoveFromWatchlist?: (id: number) => void; onConfirmWatchlist?: (item: WatchlistItem) => void }) {
   const [cif, setCif] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [wlOpen, setWlOpen] = useState(false)
@@ -447,12 +447,12 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
             </div>
           </div>
 
-          {/* Wishlist — price-target alerts per client */}
+          {/* Watchlist — price-target alerts per client */}
           <div className="rounded-xl border border-[rgba(240,185,11,0.25)] bg-[#0c0f1a] shadow-[0_0_0_1px_rgba(240,185,11,0.04),0_8px_32px_rgba(0,0,0,0.4)]">
             <div className="flex items-center justify-between border-b border-[rgba(240,185,11,0.15)] px-3 py-2.5">
               <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#f0c33b]">
-                <span>🔔</span> Wishlist
-                {wishlist.length > 0 && <span className="ml-1 rounded-full bg-[rgba(240,185,11,0.2)] px-1.5 py-px text-[10px] font-bold">{wishlist.length}</span>}
+                <span>🔔</span> Watchlist
+                {watchlist.length > 0 && <span className="ml-1 rounded-full bg-[rgba(240,185,11,0.2)] px-1.5 py-px text-[10px] font-bold">{watchlist.length}</span>}
               </div>
               <button onClick={() => setWlOpen((o) => !o)} className="rounded px-2 py-0.5 text-[10px] font-semibold text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.3)] hover:bg-[rgba(240,185,11,0.1)] transition-colors">
                 {wlOpen ? 'Cancel' : '+ Add target'}
@@ -478,7 +478,7 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                 <button onClick={() => {
                   const tp = parseFloat(wlTarget)
                   const q = parseInt(wlQty, 10)
-                  if (tp > 0 && q > 0) { onAddToWishlist?.(wlSym, tp, q); setWlOpen(false); setWlTarget('') }
+                  if (tp > 0 && q > 0) { onAddToWatchlist?.(wlSym, tp, q); setWlOpen(false); setWlTarget('') }
                 }} className="h-8 rounded bg-[rgba(240,185,11,0.18)] px-3 text-[11px] font-bold text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.35)] hover:bg-[rgba(240,185,11,0.28)] transition-colors">
                   Add
                 </button>
@@ -486,10 +486,10 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
             )}
 
             <div className="flex flex-col divide-y divide-[rgba(240,185,11,0.08)]">
-              {wishlist.length === 0 && !wlOpen && (
+              {watchlist.length === 0 && !wlOpen && (
                 <div className="px-3 py-3 text-[11px] text-content-subtle text-center">No targets set. Add one when a client wants to buy at a lower price.</div>
               )}
-              {wishlist.map((item) => {
+              {watchlist.map((item) => {
                 const cur = price(item.symbol)?.last ?? 0
                 const triggered = cur > 0 && cur <= item.targetPrice
                 const pctAway = cur > 0 ? ((item.targetPrice - cur) / cur) * 100 : null
@@ -511,13 +511,13 @@ function ClientColumn({ client, onOpen, verifying, onUseIdea, narrow, showAdviso
                       </div>
                     </div>
                     {triggered ? (
-                      <button onClick={() => onConfirmWishlist?.(item)}
+                      <button onClick={() => onConfirmWatchlist?.(item)}
                         className="shrink-0 rounded-md bg-[rgba(47,208,122,0.18)] px-2.5 py-1 text-[10px] font-bold text-up ring-1 ring-[rgba(47,208,122,0.35)] hover:bg-[rgba(47,208,122,0.28)] transition-colors whitespace-nowrap"
                         style={{ boxShadow: '0 0 10px rgba(47,208,122,0.2)' }}>
                         Confirm &amp; place
                       </button>
                     ) : (
-                      <button onClick={() => onRemoveFromWishlist?.(item.id)} className="shrink-0 text-content-muted hover:text-down transition-colors" title="Remove">✕</button>
+                      <button onClick={() => onRemoveFromWatchlist?.(item.id)} className="shrink-0 text-content-muted hover:text-down transition-colors" title="Remove">✕</button>
                     )}
                   </div>
                 )
@@ -562,10 +562,10 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
   const [vipMap, setVipMap] = useState<Record<string, boolean>>({})
   const isVip = (c: DeskCustomer) => vipMap[c.sif] ?? c.vip
   const toggleVip = (c: DeskCustomer) => setVipMap((m) => ({ ...m, [c.sif]: !(m[c.sif] ?? c.vip) }))
-  const wishlistId = useRef(0)
-  const [wishlistMap, setWishlistMap] = useState<Record<string, WishlistItem[]>>({})
-  const wishlist = client ? (wishlistMap[client.sif] ?? []) : []
-  const announcedWishlist = useRef<Set<number>>(new Set())
+  const watchlistId = useRef(0)
+  const [watchlistMap, setWatchlistMap] = useState<Record<string, WatchlistItem[]>>({})
+  const watchlist = client ? (watchlistMap[client.sif] ?? []) : []
+  const announcedWatchlist = useRef<Set<number>>(new Set())
   const [verifying, setVerifying] = useState<DeskCustomer | null>(null)
   const [request, setRequest] = useState(() => snap?.request ?? '')
   const [orders, setOrders] = useState<OrderLine[]>(() => snap?.orders ?? [])
@@ -586,19 +586,19 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       ?? FULL_MARKET.find((s) => s.lastPrice > 0 && !used.has(s.symbolShortName))!.symbolShortName
     return [...os, makeLine(side, next, 10_000)]
   })
-  const addToWishlist = (symbol: string, targetPrice: number, qty: number) => {
+  const addToWatchlist = (symbol: string, targetPrice: number, qty: number) => {
     if (!client) return
-    const id = ++wishlistId.current
-    setWishlistMap((m) => ({ ...m, [client.sif]: [...(m[client.sif] ?? []), { id, symbol, targetPrice, qty }] }))
+    const id = ++watchlistId.current
+    setWatchlistMap((m) => ({ ...m, [client.sif]: [...(m[client.sif] ?? []), { id, symbol, targetPrice, qty }] }))
   }
-  const removeFromWishlist = (id: number) => {
+  const removeFromWatchlist = (id: number) => {
     if (!client) return
-    setWishlistMap((m) => ({ ...m, [client.sif]: (m[client.sif] ?? []).filter((x) => x.id !== id) }))
+    setWatchlistMap((m) => ({ ...m, [client.sif]: (m[client.sif] ?? []).filter((x) => x.id !== id) }))
   }
-  const confirmWishlistItem = (item: WishlistItem) => {
+  const confirmWatchlistItem = (item: WatchlistItem) => {
     setOrders((os) => [...os, makeLine('buy', item.symbol, item.qty)])
     if (!client) return
-    setWishlistMap((m) => ({ ...m, [client.sif]: (m[client.sif] ?? []).filter((x) => x.id !== item.id) }))
+    setWatchlistMap((m) => ({ ...m, [client.sif]: (m[client.sif] ?? []).filter((x) => x.id !== item.id) }))
   }
   const [transcript, setTranscript] = useState<{ id: number; speaker: 'Broker' | 'Client' | 'AI'; text: string; time: string }[]>(() => snap?.transcript ?? [])
   const turnId = useRef((snap?.transcript ?? []).reduce((m, t) => Math.max(m, t.id), 0))
@@ -620,13 +620,13 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
     freshTurnIds.current.add(id)
     setTranscript((t) => [...t, { id, speaker, text, time: now() }])
   }
-  // Alert the broker via the transcript when a wishlist item hits its target price.
+  // Alert the broker via the transcript when a watchlist item hits its target price.
   useEffect(() => {
-    for (const item of wishlist) {
-      if (announcedWishlist.current.has(item.id)) continue
+    for (const item of watchlist) {
+      if (announcedWatchlist.current.has(item.id)) continue
       const cur = price(item.symbol)?.last ?? 0
       if (cur > 0 && cur <= item.targetPrice) {
-        announcedWishlist.current.add(item.id)
+        announcedWatchlist.current.add(item.id)
         addTurn('AI', `🔔 Target reached — ${item.symbol} is now at ${fmtPrice(cur)}, at or below client target of ${fmtPrice(item.targetPrice)}. Confirm purchase to add to basket.`)
       }
     }
@@ -740,9 +740,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       ['Broker', `Great — I'll move it now and then place the basket.`],
     ])
   }
-  // Demo C — client wants to buy at a lower price; broker adds it to the wishlist,
+  // Demo C — client wants to buy at a lower price; broker adds it to the watchlist,
   // target is set at the current live price so the alert fires immediately in the demo.
-  const dictateWishlist = () => {
+  const dictateWatchlist = () => {
     const c = startDemoCall()
     const sym = bluechipFirst(c.usualStocks)[0] ?? BLUE_CHIPS[0]
     const curPx = pxOf(sym)
@@ -753,9 +753,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       ['Broker', `Good afternoon ${first} — you're through to your desk. How can I help today?`],
       ['Client', `Hi. I've been watching ${sym} — I like the stock but the price feels a bit stretched right now. If it drops to ${fmtPrice(targetPx)}, I'd want 50,000 shares.`],
       ['Broker', `Understood. I'll set a price target alert for ${sym} at ${fmtPrice(targetPx)} for 50,000 shares. The moment it triggers, I'll reach out to confirm and place it.`],
-      ['AI', `Wishlist entry created — monitoring ${sym} for a drop to ${fmtPrice(targetPx)}. Alert fires automatically when the market reaches that level.`, () => {
-        setWishlistMap((m) => {
-          const id = ++wishlistId.current
+      ['AI', `Watchlist entry created — monitoring ${sym} for a drop to ${fmtPrice(targetPx)}. Alert fires automatically when the market reaches that level.`, () => {
+        setWatchlistMap((m) => {
+          const id = ++watchlistId.current
           return { ...m, [c.sif]: [...(m[c.sif] ?? []), { id, symbol: sym, targetPrice: targetPx, qty }] }
         })
       }],
@@ -902,7 +902,7 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
       <div ref={bodyRef} className={`flex min-h-0 flex-1 gap-3 p-3 ${wide ? '' : 'flex-col'}`}>
         {/* Client + order flow. Narrow: scroll together above the pinned transcript. */}
         <div className={wide ? 'contents' : 'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto'}>
-        <ClientColumn client={client} onOpen={openClient} verifying={verifying} onUseIdea={(t) => setRequest(t)} narrow={!wide} showAdvisory={wide} ideas={ideas} isVip={isVip} onToggleVip={toggleVip} wishlist={wishlist} onAddToWishlist={addToWishlist} onRemoveFromWishlist={removeFromWishlist} onConfirmWishlist={confirmWishlistItem} />
+        <ClientColumn client={client} onOpen={openClient} verifying={verifying} onUseIdea={(t) => setRequest(t)} narrow={!wide} showAdvisory={wide} ideas={ideas} isVip={isVip} onToggleVip={toggleVip} watchlist={watchlist} onAddToWatchlist={addToWatchlist} onRemoveFromWatchlist={removeFromWatchlist} onConfirmWatchlist={confirmWatchlistItem} />
 
         {/* AI order flow (center) — below the client column when narrow */}
         <div className={`flex min-w-0 flex-col gap-3 ${wide ? 'min-h-0 flex-1 overflow-y-auto' : 'order-2'}`}>
@@ -933,9 +933,9 @@ export default function OrderPlacementAI({ compact = false, onDock, onOpenWindow
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
                 Short funds call
               </button>
-              <button onClick={dictateWishlist} disabled={!client} title="Simulate a client setting a price-target alert" className="flex items-center gap-1.5 rounded-md border border-[rgba(240,185,11,0.35)] bg-[rgba(240,185,11,0.07)] px-2.5 py-1.5 text-[11px] font-semibold text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.1)] hover:bg-[rgba(240,185,11,0.13)] disabled:opacity-40">
+              <button onClick={dictateWatchlist} disabled={!client} title="Simulate a client setting a price-target alert" className="flex items-center gap-1.5 rounded-md border border-[rgba(240,185,11,0.35)] bg-[rgba(240,185,11,0.07)] px-2.5 py-1.5 text-[11px] font-semibold text-[#f0c33b] ring-1 ring-[rgba(240,185,11,0.1)] hover:bg-[rgba(240,185,11,0.13)] disabled:opacity-40">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                Wishlist call
+                Watchlist call
               </button>
             </div>
             {orders.length > 0 && (
