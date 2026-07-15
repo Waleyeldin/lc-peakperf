@@ -787,7 +787,7 @@ export default function TradingPlatform() {
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border-dark bg-[#0b1b4d] px-4">
         <Link to="/" className="flex items-center text-white" title="FAB x Trade">
-          <FabTradeLogo className="h-9 w-auto" />
+          <FabTradeLogo className="h-7 w-auto -translate-y-[3px]" />
         </Link>
         <span className="text-white/30">/</span>
         <span className="text-[13px] font-medium text-white/80">{current.title}</span>

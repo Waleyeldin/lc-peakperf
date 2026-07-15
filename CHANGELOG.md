@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.4.4
+
+- **Header logo — smaller and vertically centered** — the FAB x Trade wordmark in the top bar is slightly smaller (28px tall, down from 36px) and nudged up 3px so the "FAB TRADE" letters sit optically centered in the header. Previously the upward spike of the red chevron pulled the logo's geometric center above the readable letters, making the wordmark read as sitting low.
+
 ## v3.4.3
 
 - **Branding — TRADE wordmark no longer stretches** — the "TRADE" wordmark in the header logo was rendered as live SVG text using the Barlow Condensed web font loaded from Google's CDN. In the packaged desktop app that font did not reliably load, so it fell back to a wide system font (Arial), making the wordmark look stretched and mismatched. It is now baked in as Barlow Condensed Bold vector outlines (extracted from the real font), so it renders pixel-identical everywhere with zero dependency on any font loading — offline, in every build.
