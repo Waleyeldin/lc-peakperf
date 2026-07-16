@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.4.5
+
+- **Auto-updater — moved to company repository** — the update endpoint now points at `apostrophy-ae/fab-security-desktop` instead of the personal `Waleyeldin/lc-peakperf` repo. This is the bridge release: installed apps update to v3.4.5 from the old location, and from v3.4.5 onward all future updates are served from the company repository.
+
 ## v3.4.4
 
 - **Header logo — smaller and vertically centered** — the FAB x Trade wordmark in the top bar is slightly smaller (28px tall, down from 36px) and nudged up 3px so the "FAB TRADE" letters sit optically centered in the header. Previously the upward spike of the red chevron pulled the logo's geometric center above the readable letters, making the wordmark read as sitting low.
