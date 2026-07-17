@@ -1,18 +1,31 @@
-import { useRef, useState } from 'react'
-import { Panel, Select, Button, Badge } from './ui'
+import { useEffect, useRef, useState } from 'react'
 import { FULL_MARKET, CLIENT_OPTIONS, fmtMoney } from '../data'
 import type { Symbol } from '../data'
 import { usePrices } from '../simData'
+import SymbolCombo from './SymbolCombo'
 
 /**
- * Basket Order builder (FAB Securities) — modernised version of the legacy
- * "Basket Order" action in the Trading ribbon. The broker assembles a list of
- * lines (one symbol each), tunes side / type / qty / price per line, and submits
- * the whole basket against a single client.
+ * Basket Order builder (FAB Securities). The broker stages a list of lines
+ * (one symbol each), tunes side / type / qty / price / condition per line, then
+ * executes them — one by one (not a single atomic transaction) or as a block.
+ *
+ * Styled to match the Order Placement desk (dark #0a0c12 panels, #0b0e15 inputs,
+ * FAB-blue accents). When given a `client`, it embeds under an open CIF and
+ * hides its own client selector.
  */
 
 type Side = 'buy' | 'sell'
-type OrderType = 'Limit' | 'Market'
+type OrderType = 'Limit' | 'Market' // Stop-limit is unsupported in these markets.
+type GoodTill = 'Day' | 'GTC' | 'GTD' | 'IOC'
+type Condition = 'None' | 'All-or-None' | 'Minimum Fill'
+type ExecMode = 'Sequential' | 'Grouped'
+type LineStatus = 'Staged' | 'Sending' | 'Sent'
+
+// One client can hold several portfolios; the basket routes to one.
+const PORTFOLIOS = ['Regular', 'Margin', 'Margin Lending', 'US Market']
+const GOOD_TILL: GoodTill[] = ['Day', 'GTC', 'GTD', 'IOC']
+const CONDITIONS: Condition[] = ['None', 'All-or-None', 'Minimum Fill']
+const CONDITION_LABEL: Record<Condition, string> = { 'None': 'None', 'All-or-None': 'AON', 'Minimum Fill': 'Min Fill' }
 
 interface BasketLine {
   id: number
@@ -21,6 +34,8 @@ interface BasketLine {
   type: OrderType
   qty: number
   price: number
+  condition: Condition
+  status: LineStatus
 }
 
 /** Value of a single line: Market uses the current (live/sim) price, Limit uses the set price. */
@@ -31,7 +46,7 @@ function lineValue(line: BasketLine, marketPx: number): number {
 
 /** Build a fresh basket line from a symbol with sensible defaults. */
 function makeLine(id: number, symbol: Symbol, side: Side = 'buy'): BasketLine {
-  return { id, symbol, side, type: 'Limit', qty: 1000, price: symbol.lastPrice }
+  return { id, symbol, side, type: 'Limit', qty: 1000, price: symbol.lastPrice, condition: 'None', status: 'Staged' }
 }
 
 const seedSymbol = (short: string) => FULL_MARKET.find((s) => s.symbolShortName === short)!
@@ -42,19 +57,28 @@ const SEED: BasketLine[] = [
   makeLine(3, seedSymbol('AMANAT'), 'buy'),
 ]
 
-const inputBase =
-  'h-8 rounded-md border border-border-dark bg-[#15171a] px-2.5 text-[13px] text-content tabular-nums outline-none transition-colors hover:border-[#3a3d42] focus:border-action disabled:opacity-40'
+// ── Desk-matching style tokens ──────────────────────────────────────────────
+const PANEL = 'rounded-xl border border-[rgba(0,98,255,0.15)] bg-[#0a0c12] shadow-[0_2px_20px_rgba(0,0,0,0.3)]'
+const D_INPUT = 'h-8 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[13px] text-content tabular-nums outline-none transition-colors hover:border-[rgba(0,98,255,0.4)] focus:border-[#5b9bff] disabled:opacity-40'
+const D_SELECT = `${D_INPUT} appearance-none pr-7 [background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%235b9bff%22 stroke-width=%222%22><path d=%22M6 9l6 6 6-6%22/></svg>')] bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat`
+const D_LABEL = 'text-[9px] font-bold uppercase tracking-widest text-content-subtle'
 
-export default function BasketOrder() {
+export default function BasketOrder({ client: fixedClient }: { client?: string } = {}) {
   const [lines, setLines] = useState<BasketLine[]>(SEED)
-  const [pick, setPick] = useState<string>(FULL_MARKET[0].symbolShortName)
-  const [client, setClient] = useState<string>(CLIENT_OPTIONS[0])
+  const [client, setClient] = useState<string>(fixedClient ?? CLIENT_OPTIONS[0])
+  const [portfolio, setPortfolio] = useState<string>(PORTFOLIOS[0])
+  const [goodTill, setGoodTill] = useState<GoodTill>('Day')
+  const [execMode, setExecMode] = useState<ExecMode>('Sequential')
+  const [sending, setSending] = useState(false)
   const nextId = useRef(SEED.length + 1)
   const price = usePrices()
   const mpx = (l: BasketLine) => price(l.symbol.symbolShortName)?.last ?? l.symbol.lastPrice
 
-  function addLine() {
-    const symbol = FULL_MARKET.find((s) => s.symbolShortName === pick)
+  // Keep the fixed (embedded) client in sync with the open CIF.
+  useEffect(() => { if (fixedClient) setClient(fixedClient) }, [fixedClient])
+
+  function addBySymbol(short: string) {
+    const symbol = FULL_MARKET.find((s) => s.symbolShortName === short)
     if (!symbol) return
     setLines((prev) => [...prev, makeLine(nextId.current++, symbol)])
   }
@@ -64,78 +88,121 @@ export default function BasketOrder() {
   }
 
   const remove = (id: number) => setLines((prev) => prev.filter((l) => l.id !== id))
-  const clear = () => setLines([])
+  const clear = () => { setLines([]); setSending(false) }
+  const resetStatuses = () => setLines((prev) => prev.map((l) => ({ ...l, status: 'Staged' as LineStatus })))
+  const patchStatus = (id: number, status: LineStatus) =>
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)))
 
+  // Stage → review → execute. Sequential walks one by one; Grouped sends a block.
   function submit() {
-    // No backend in this local build — submitting just clears the basket.
-    setLines([])
+    if (sending || lines.length === 0) return
+    setSending(true)
+    if (execMode === 'Grouped') {
+      setLines((prev) => prev.map((l) => ({ ...l, status: 'Sent' as LineStatus })))
+      setSending(false)
+      return
+    }
+    const ids = lines.map((l) => l.id)
+    ids.forEach((id, i) => {
+      setTimeout(() => patchStatus(id, 'Sending'), i * 520)
+      setTimeout(() => {
+        patchStatus(id, 'Sent')
+        if (i === ids.length - 1) setSending(false)
+      }, i * 520 + 260)
+    })
   }
 
   const totalBuy = lines.filter((l) => l.side === 'buy').reduce((s, l) => s + lineValue(l, mpx(l)), 0)
   const totalSell = lines.filter((l) => l.side === 'sell').reduce((s, l) => s + lineValue(l, mpx(l)), 0)
   const net = totalBuy - totalSell
+  const sentCount = lines.filter((l) => l.status === 'Sent').length
+  const allSent = lines.length > 0 && sentCount === lines.length
 
   return (
     <div className="flex flex-col gap-3">
       {/* ── Toolbar ─────────────────────────────────────────────── */}
-      <Panel noPadding>
-        <div className="flex flex-wrap items-end gap-3 p-3">
-          <Select
-            label="Add symbol"
-            value={pick}
-            onChange={(e) => setPick(e.target.value)}
-            className="w-[220px]"
-          >
-            {FULL_MARKET.map((s) => (
-              <option key={s.symbolShortName} value={s.symbolShortName}>
-                {s.symbolShortName} — {s.symbolName}
-              </option>
-            ))}
-          </Select>
-          <Button variant="primary" onClick={addLine}>
-            <span className="text-[15px] leading-none">＋</span> Add to basket
-          </Button>
-
-          <div className="mx-1 h-8 w-px self-end bg-border-dark" />
-
-          <Select
-            label="Client"
-            value={client}
-            onChange={(e) => setClient(e.target.value)}
+      <div className={`flex flex-wrap items-end gap-3 p-3 ${PANEL}`}>
+        {/* Searchable symbol add — same combo as the single-order ticket */}
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className={D_LABEL}>Add symbol</span>
+          <SymbolCombo
+            value=""
+            clearOnSelect
+            placeholder="Type symbol → adds to basket"
             className="w-[240px]"
-          >
-            {CLIENT_OPTIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
+            onChange={addBySymbol}
+          />
+        </label>
 
-          <Button variant="ghost" onClick={clear} className="ml-auto self-end" disabled={lines.length === 0}>
-            Clear basket
-          </Button>
-        </div>
-      </Panel>
+        <div className="mx-1 h-8 w-px self-end bg-[rgba(0,98,255,0.2)]" />
+
+        {!fixedClient && (
+          <label className="flex flex-col gap-1">
+            <span className={D_LABEL}>Client</span>
+            <select value={client} onChange={(e) => setClient(e.target.value)} className={`${D_SELECT} w-[210px]`}>
+              {CLIENT_OPTIONS.map((c) => <option key={c} value={c} className="bg-surface">{c}</option>)}
+            </select>
+          </label>
+        )}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#5b9bff]">Portfolio<span className="ml-0.5 text-down">*</span></span>
+          <select value={portfolio} onChange={(e) => setPortfolio(e.target.value)} className={`${D_SELECT} w-[150px]`}>
+            {PORTFOLIOS.map((p) => <option key={p} value={p} className="bg-surface">{p}</option>)}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className={D_LABEL}>Good Till</span>
+          <div className="inline-flex overflow-hidden rounded border border-[rgba(0,98,255,0.22)]">
+            {GOOD_TILL.map((g) => (
+              <button
+                key={g}
+                onClick={() => setGoodTill(g)}
+                className={`px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${goodTill === g ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-content-muted hover:text-content'}`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </label>
+
+        <button
+          onClick={clear}
+          disabled={lines.length === 0}
+          className="ml-auto h-8 self-end rounded-md px-3 text-[12px] font-medium text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content disabled:opacity-40"
+        >
+          Clear basket
+        </button>
+      </div>
+
+      {/* What a basket is — stage & review, executed one by one */}
+      <div className="flex items-center gap-2 rounded-lg border border-[rgba(0,98,255,0.15)] bg-[rgba(0,98,255,0.05)] px-3 py-1.5 text-[11px] text-content-muted">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5b9bff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+        <span>Stage multiple orders here and review them together. They execute <span className="text-content">one by one</span> (not a single atomic transaction) — send sequentially, or as a block in quick succession.</span>
+      </div>
 
       {/* ── Editable basket table ───────────────────────────────── */}
-      <Panel noPadding>
+      <div className={`overflow-hidden ${PANEL}`}>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
-            <thead className="sticky top-0 z-10 bg-[#15171a] text-[11px] uppercase tracking-wide text-content-muted">
+            <thead className="bg-gradient-to-r from-[#0d1220] to-[#0c0f18] text-[10px] uppercase tracking-wide text-content-muted">
               <tr className="[&>th]:px-3 [&>th]:py-2.5 [&>th]:font-medium">
                 <th className="text-left">Symbol</th>
                 <th className="text-center">Side</th>
                 <th className="text-left">Type</th>
                 <th className="text-right">Qty</th>
                 <th className="text-right">Price</th>
+                <th className="text-left">Condition</th>
                 <th className="text-right">Est. Value</th>
+                <th className="text-center">Status</th>
                 <th className="w-10 text-center" />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center text-[13px] text-content-muted">
+                  <td colSpan={9} className="px-3 py-10 text-center text-[13px] text-content-muted">
                     Basket is empty — add a symbol above to get started.
                   </td>
                 </tr>
@@ -145,33 +212,29 @@ export default function BasketOrder() {
                 return (
                   <tr
                     key={line.id}
-                    className="border-t border-border-dark [&>td]:px-3 [&>td]:py-2 hover:bg-[rgba(255,255,255,0.02)]"
+                    className="border-t border-[rgba(255,255,255,0.04)] [&>td]:px-3 [&>td]:py-2 hover:bg-[rgba(0,98,255,0.05)]"
                   >
-                    {/* Symbol (read-only) */}
+                    {/* Symbol */}
                     <td>
                       <div className="font-semibold text-content">{line.symbol.symbolShortName}</div>
-                      <div className="text-[11px] text-content-muted">{line.symbol.symbolName}</div>
+                      <div className="text-[11px] text-content-subtle">{line.symbol.symbolName}</div>
                     </td>
 
                     {/* Side toggle */}
                     <td>
                       <div className="flex justify-center gap-1">
-                        <Button
-                          size="sm"
-                          variant={line.side === 'buy' ? 'buy' : 'default'}
+                        <button
                           onClick={() => patch(line.id, { side: 'buy' })}
-                          className={line.side === 'buy' ? '' : 'opacity-60'}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${line.side === 'buy' ? 'bg-[rgba(0,98,255,0.18)] text-[#5b9bff] ring-1 ring-[rgba(0,98,255,0.45)]' : 'text-content-subtle hover:text-content'}`}
                         >
                           Buy
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={line.side === 'sell' ? 'sell' : 'default'}
+                        </button>
+                        <button
                           onClick={() => patch(line.id, { side: 'sell' })}
-                          className={line.side === 'sell' ? '' : 'opacity-60'}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${line.side === 'sell' ? 'bg-[rgba(224,56,61,0.18)] text-down ring-1 ring-[rgba(255,107,114,0.45)]' : 'text-content-subtle hover:text-content'}`}
                         >
                           Sell
-                        </Button>
+                        </button>
                       </div>
                     </td>
 
@@ -180,10 +243,10 @@ export default function BasketOrder() {
                       <select
                         value={line.type}
                         onChange={(e) => patch(line.id, { type: e.target.value as OrderType })}
-                        className={`${inputBase} w-[100px] pr-7 appearance-none [background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23979797%22 stroke-width=%222%22><path d=%22M6 9l6 6 6-6%22/></svg>')] bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat`}
+                        className={`${D_SELECT} w-[100px]`}
                       >
-                        <option value="Limit">Limit</option>
-                        <option value="Market">Market</option>
+                        <option value="Limit" className="bg-surface">Limit</option>
+                        <option value="Market" className="bg-surface">Market</option>
                       </select>
                     </td>
 
@@ -195,7 +258,7 @@ export default function BasketOrder() {
                         step={1000}
                         value={line.qty}
                         onChange={(e) => patch(line.id, { qty: Math.max(0, Number(e.target.value) || 0) })}
-                        className={`${inputBase} w-[110px] text-right`}
+                        className={`${D_INPUT} w-[104px] text-right`}
                       />
                     </td>
 
@@ -209,24 +272,48 @@ export default function BasketOrder() {
                         disabled={isMarket}
                         placeholder={isMarket ? 'MKT' : undefined}
                         onChange={(e) => patch(line.id, { price: Math.max(0, Number(e.target.value) || 0) })}
-                        className={`${inputBase} w-[110px] text-right`}
+                        className={`${D_INPUT} w-[104px] text-right text-[#9cc0ff]`}
                       />
+                    </td>
+
+                    {/* Condition */}
+                    <td>
+                      <select
+                        value={line.condition}
+                        onChange={(e) => patch(line.id, { condition: e.target.value as Condition })}
+                        className={`${D_SELECT} w-[104px]`}
+                      >
+                        {CONDITIONS.map((c) => (
+                          <option key={c} value={c} className="bg-surface">{CONDITION_LABEL[c]}</option>
+                        ))}
+                      </select>
                     </td>
 
                     {/* Est. value */}
                     <td className="text-right tabular-nums text-content">{fmtMoney(lineValue(line, mpx(line)))}</td>
 
+                    {/* Status */}
+                    <td className="text-center">
+                      <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold ${
+                        line.status === 'Sent'
+                          ? 'bg-[rgba(47,208,122,0.12)] text-up ring-1 ring-[rgba(47,208,122,0.25)]'
+                          : line.status === 'Sending'
+                            ? 'bg-[rgba(255,170,0,0.12)] text-warning ring-1 ring-[rgba(255,170,0,0.25)]'
+                            : 'bg-[rgba(255,255,255,0.05)] text-content-muted ring-1 ring-[rgba(255,255,255,0.08)]'
+                      }`}>
+                        {line.status === 'Sending' ? '● Sending' : line.status === 'Sent' ? '✓ Sent' : 'Staged'}
+                      </span>
+                    </td>
+
                     {/* Remove */}
                     <td className="text-center">
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                      <button
                         onClick={() => remove(line.id)}
                         aria-label="Remove line"
-                        className="px-2"
+                        className="rounded px-2 py-1 text-content-subtle hover:text-down"
                       >
                         ✕
-                      </Button>
+                      </button>
                     </td>
                   </tr>
                 )
@@ -234,34 +321,59 @@ export default function BasketOrder() {
             </tbody>
           </table>
         </div>
-      </Panel>
+      </div>
 
       {/* ── Footer summary ──────────────────────────────────────── */}
-      <Panel noPadding>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase text-content-muted">Lines</span>
-            <Badge tone="neutral">{lines.length}</Badge>
-          </div>
+      <div className={`flex flex-wrap items-center gap-x-6 gap-y-3 p-3 ${PANEL}`}>
+        <div className="flex items-center gap-2">
+          <span className={D_LABEL}>Lines</span>
+          <span className="rounded bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[12px] font-semibold tabular-nums text-content">{lines.length}</span>
+        </div>
 
-          <Summary label="Total Buy" value={totalBuy} className="text-up" />
-          <Summary label="Total Sell" value={totalSell} className="text-down" />
-          <Summary
-            label="Net (Buy − Sell)"
-            value={net}
-            className={net > 0 ? 'text-up' : net < 0 ? 'text-down' : 'text-content'}
-            signed
-          />
+        <Summary label="Total Buy" value={totalBuy} className="text-up" />
+        <Summary label="Total Sell" value={totalSell} className="text-down" />
+        <Summary
+          label="Net (Buy − Sell)"
+          value={net}
+          className={net > 0 ? 'text-up' : net < 0 ? 'text-down' : 'text-content'}
+          signed
+        />
 
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-[12px] text-content-muted">{client}</span>
-            <Badge tone="info">AED</Badge>
-            <Button variant="primary" onClick={submit} disabled={lines.length === 0}>
-              Submit Basket ({lines.length})
-            </Button>
+        {/* Execution: one-by-one (default) or grouped as a block */}
+        <div className="flex flex-col gap-1">
+          <span className={D_LABEL}>Execution</span>
+          <div className="inline-flex overflow-hidden rounded border border-[rgba(0,98,255,0.22)]">
+            {(['Sequential', 'Grouped'] as ExecMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setExecMode(m)}
+                title={m === 'Sequential' ? 'Execute the orders one by one' : 'Execute the basket together as a block'}
+                className={`px-3 py-1.5 text-[11px] font-semibold transition-colors ${execMode === m ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-content-muted hover:text-content'}`}
+              >
+                {m === 'Sequential' ? 'One by one' : 'Grouped'}
+              </button>
+            ))}
           </div>
         </div>
-      </Panel>
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-[12px] text-content-muted">{client} · <span className="text-content">{portfolio}</span></span>
+          {allSent ? (
+            <button onClick={resetStatuses} className="h-8 rounded-md px-3 text-[12px] font-medium text-content-muted hover:bg-[rgba(255,255,255,0.06)] hover:text-content">
+              Re-stage
+            </button>
+          ) : (
+            <button
+              onClick={submit}
+              disabled={sending || lines.length === 0}
+              className="btn-glow-blue h-9 rounded-md px-4 text-[12px] font-bold uppercase tracking-wide text-white transition-all hover:brightness-110 disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #0062ff 0%, #003dcc 100%)' }}
+            >
+              {sending ? `Sending ${sentCount}/${lines.length}…` : execMode === 'Grouped' ? `Send Block (${lines.length})` : `Send One by One (${lines.length})`}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -280,7 +392,7 @@ function Summary({
   const sign = signed && value > 0 ? '+' : signed && value < 0 ? '−' : ''
   return (
     <div className="flex flex-col">
-      <span className="text-[11px] uppercase text-content-muted">{label}</span>
+      <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">{label}</span>
       <span className={`text-[15px] font-semibold tabular-nums ${className}`}>
         {sign}
         {fmtMoney(Math.abs(value))} <span className="text-[11px] font-normal text-content-muted">AED</span>

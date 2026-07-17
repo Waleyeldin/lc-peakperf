@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { FULL_MARKET, CANDLES, fmtPrice, fmtInt, fmtPct, bluechipFirst } from '../data'
+import type { ReactNode } from 'react'
+import { FULL_MARKET, fmtPrice, fmtInt, bluechipFirst } from '../data'
 import type { PortfolioPosition } from '../data'
 import { DESK_CUSTOMERS, findCustomer } from '../deskData'
 import type { DeskCustomer } from '../deskData'
 import { usePrices } from '../simData'
-import { isLiveSymbol } from '../liveData'
+import BasketOrder from './BasketOrder'
+import SymbolCombo from './SymbolCombo'
 
 /**
  * Broker Desk — a split-screen, widget-based trading desk.
@@ -23,6 +25,27 @@ const BLUE = '#0062ff'
 const RED = '#e0383d'
 const fmtMoney = (n: number) => 'AED ' + Math.round(n).toLocaleString('en-US')
 const priceOf = (short: string) => FULL_MARKET.find((s) => s.symbolShortName === short)?.lastPrice ?? 0
+
+// ─── Order-ticket options (added per the trading-desk requirements) ──────────
+// A client holds several portfolios; orders route to one. Types are limited to
+// Market / Limit (stop-limit is unsupported in these markets). Conditions cover
+// all-or-none / minimum fill. Commission is 0.275% of value, min AED 25.
+type OrderType = 'Market' | 'Limit'
+type GoodTill = 'Day' | 'GTC' | 'GTD' | 'IOC'
+type Condition = 'None' | 'All-or-None' | 'Minimum Fill'
+interface OrderOptions { portfolio: string; orderType: OrderType; goodTill: GoodTill; condition: Condition; expiry?: string; minFillQty?: number }
+const PORTFOLIOS = ['Regular', 'Margin', 'Margin Lending', 'US Market']
+const ORDER_TYPES: OrderType[] = ['Market', 'Limit']
+const GOOD_TILL: GoodTill[] = ['Day', 'GTC', 'GTD', 'IOC']
+const CONDITIONS: Condition[] = ['None', 'All-or-None', 'Minimum Fill']
+// Short tab labels — full names are time-costly to read on a trading desk.
+const CONDITION_LABEL: Record<Condition, string> = { 'None': 'None', 'All-or-None': 'AON', 'Minimum Fill': 'Min Fill' }
+const FEE_RATE = 0.00275
+const MIN_FEE = 25
+const feeFor = (v: number) => (v > 0 ? Math.max(v * FEE_RATE, MIN_FEE) : 0)
+const optionsSuffix = (o: OrderOptions) =>
+  `${o.portfolio} · ${o.orderType} · ${o.goodTill}${o.goodTill === 'GTD' && o.expiry ? ` ${o.expiry}` : ''}` +
+  `${o.condition !== 'None' ? ` · ${o.condition}${o.condition === 'Minimum Fill' && o.minFillQty ? ` (min ${fmtInt(o.minFillQty)})` : ''}` : ''}`
 
 
 // ─── Order-placed toast notifications ────────────────────────────────────────
@@ -48,228 +71,311 @@ function ToastHost({ toasts }: { toasts: Toast[] }) {
   )
 }
 
-// ─── Mini sparkline from the symbol's candles ────────────────────────────────
-function Sparkline({ symbol }: { symbol: string }) {
-  const candles = CANDLES[symbol]
-  if (!candles || candles.length < 2) return <div className="h-14" />
-  const closes = candles.slice(-40).map((c) => c.c)
-  const min = Math.min(...closes)
-  const max = Math.max(...closes)
-  const span = max - min || 1
-  const w = 260
-  const h = 56
-  const pts = closes
-    .map((c, i) => `${((i / (closes.length - 1)) * w).toFixed(1)},${(h - ((c - min) / span) * h).toFixed(1)}`)
-    .join(' ')
-  const up = closes[closes.length - 1] >= closes[0]
-  const color = up ? '#2fd07a' : RED
-  const fillPts = `${pts} ${w},${h} 0,${h}`
-  const gradId = `sg-${symbol}`
+// ─── Small building blocks for the Buy ticket's detailed sections ───────────
+const D_IN = 'h-8 w-full rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[12px] text-content outline-none transition-colors focus:border-[#5b9bff]'
+function Stat({ label, value, cls = '' }: { label: string; value: string; cls?: string }) {
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" className="block">
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <polygon points={fillPts} fill={`url(#${gradId})`} />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div className="flex flex-col">
+      <span className="text-[9px] font-medium uppercase tracking-wide text-content-subtle">{label}</span>
+      <span className={`text-[11px] tabular-nums text-content ${cls}`}>{value}</span>
+    </div>
   )
 }
-
-// ─── Left: Market Watch ──────────────────────────────────────────────────────
-function MarketWatch({ symbol, onPick }: { symbol: string; onPick: (s: string) => void }) {
-  const [q, setQ] = useState('')
-  const price = usePrices()
-  const prevPricesRef = useRef<Record<string, number>>({})
-  const [tickMap, setTickMap] = useState<Record<string, 'up' | 'down'>>({})
-
-  useEffect(() => {
-    const updates: Record<string, 'up' | 'down'> = {}
-    for (const s of FULL_MARKET) {
-      const cur = price(s.symbolShortName)?.last ?? s.lastPrice
-      const prev = prevPricesRef.current[s.symbolShortName]
-      if (prev !== undefined && Math.abs(cur - prev) > 0.0001) {
-        updates[s.symbolShortName] = cur > prev ? 'up' : 'down'
-      }
-      prevPricesRef.current[s.symbolShortName] = cur
-    }
-    if (Object.keys(updates).length > 0) {
-      setTickMap(updates)
-      const t = setTimeout(() => setTickMap((p) => Object.keys(p).length > 0 ? {} : p), 650)
-      return () => clearTimeout(t)
-    }
-  }, [price])
-
-  const rows = useMemo(() => {
-    const query = q.trim().toLowerCase()
-    return FULL_MARKET.filter(
-      (s) => !query || `${s.symbolName} ${s.symbolShortName}`.toLowerCase().includes(query),
-    ).slice(0, 60)
-  }, [q])
-  const sel = FULL_MARKET.find((s) => s.symbolShortName === symbol)
-  const selQ = sel ? price(sel.symbolShortName) : null
-  const selLast = selQ?.last ?? sel?.lastPrice ?? 0
-  const selChg = selQ?.change ?? sel?.change ?? 0
-  const selChgPct = selQ?.changePct ?? sel?.changePct ?? 0
-
+function RangeBar({ leftLabel, leftVal, rightLabel, rightVal, pct }: { leftLabel: string; leftVal: string; rightLabel: string; rightVal: string; pct: number }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[rgba(0,98,255,0.22)] bg-[#07090e] shadow-[0_0_0_1px_rgba(0,98,255,0.04),0_8px_32px_rgba(0,0,0,0.5)]">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[rgba(0,98,255,0.15)] bg-gradient-to-r from-[#0b1220] via-[#0d1018] to-[#0f1018] px-3">
-        <span className="inline-block size-1.5 rounded-full bg-up shadow-[0_0_5px_#2fd07a]" title="Live market data" />
-        <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#5b9bff]">Market Watch</h3>
-        <span className="text-[10px] text-content-subtle">· filters Buy panel</span>
-      </header>
-
-      <div className="shrink-0 border-b border-border-dark p-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search symbol… (EMAAR, DIB, SALIK)"
-          className="h-9 w-full rounded-md border border-[rgba(0,98,255,0.2)] bg-[#0b0e15] px-3 text-[13px] text-content outline-none focus:border-[#5b9bff]"
-        />
-        {sel && (
-          <div className="mt-3 rounded-lg border border-[rgba(0,98,255,0.28)] bg-gradient-to-br from-[#0c1528] to-[#080c14] p-3 shadow-[0_0_24px_rgba(0,98,255,0.1)]">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 text-[14px] font-semibold text-content">
-                  {sel.symbolShortName}
-                  {isLiveSymbol(sel.symbolShortName)
-                    ? <span className="inline-flex items-center gap-1 text-[9px] font-bold text-up"><span className="inline-block size-1.5 rounded-full bg-up shadow-[0_0_5px_#2fd07a]" />LIVE</span>
-                    : <span className="text-[9px] font-medium text-content-subtle">SIM</span>}
-                </div>
-                <div className="text-[11px] text-content-muted">{sel.symbolName}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-[22px] font-black tabular-nums text-content leading-none">{fmtPrice(selLast)}</div>
-                <div className={`mt-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ring-1 ${selChg >= 0 ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.2)]' : 'bg-[rgba(255,107,114,0.1)] text-down ring-[rgba(255,107,114,0.2)]'}`}>
-                  {selChg >= 0 ? '+' : ''}{fmtPrice(selChg)} ({fmtPct(selChgPct)})
-                </div>
-              </div>
-            </div>
-            <div className="mt-2"><Sparkline symbol={sel.symbolShortName} /></div>
-            <div className="mt-1 flex justify-between text-[11px] tabular-nums text-content-muted">
-              <span>Bid {fmtPrice(sel.bidPrice)}</span>
-              <span>Ask {fmtPrice(sel.offerPrice)}</span>
-              <span>Vol {fmtInt(sel.volume)}</span>
-            </div>
-          </div>
-        )}
+    <div>
+      <div className="mb-0.5 flex items-center justify-between text-[9px] tabular-nums text-content-subtle">
+        <span>{leftLabel} {leftVal}</span>
+        <span>{rightLabel} {rightVal}</span>
       </div>
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-[12.5px] tabular-nums">
-          <thead className="sticky top-0 z-10 bg-[#0c0e12] text-[11px] uppercase tracking-wide text-content-muted">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">Symbol</th>
-              <th className="px-3 py-2 text-right font-medium">Last</th>
-              <th className="px-3 py-2 text-right font-medium">Chg%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => {
-              const rq = price(s.symbolShortName)
-              const last = rq?.last ?? s.lastPrice
-              const pct = rq?.changePct ?? s.changePct
-              return (
-                <tr
-                  key={s.symbolShortName}
-                  onClick={() => onPick(s.symbolShortName)}
-                  className={`cursor-pointer border-b border-[rgba(255,255,255,0.04)] transition-colors hover:bg-[rgba(0,98,255,0.07)] ${
-                    s.symbolShortName === symbol ? 'bg-[rgba(0,98,255,0.18)]' : ''
-                  }`}
-                >
-                  <td className="px-3 py-1.5 text-left">
-                    {isLiveSymbol(s.symbolShortName) && <span className="mr-1.5 inline-block size-1.5 rounded-full bg-up align-middle shadow-[0_0_4px_#2fd07a]" title="Live" />}
-                    <span className="font-medium text-content">{s.symbolShortName}</span>
-                    <span className="ml-2 text-[11px] text-content-muted">{s.marketShortName}</span>
-                  </td>
-                  <td className={`px-3 py-1.5 text-right text-content${tickMap[s.symbolShortName] === 'up' ? ' tick-up' : tickMap[s.symbolShortName] === 'down' ? ' tick-down' : ''}`}>{fmtPrice(last)}</td>
-                  <td className={`px-3 py-1.5 text-right font-semibold ${pct >= 0 ? 'text-up' : 'text-down'}`}>{fmtPct(pct)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <div className="relative h-1.5 rounded-full bg-gradient-to-r from-up/30 via-content-subtle/20 to-down/30">
+        <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-content shadow-[0_0_4px_rgba(255,255,255,0.5)]" style={{ left: `${pct}%` }} />
       </div>
     </div>
   )
 }
+function BuyField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[9px] font-medium uppercase tracking-wide text-content-subtle">{label}</span>
+      {children}
+    </label>
+  )
+}
 
-// ─── Buy panel (BLUE) — multiple line items ──────────────────────────────────
-interface BuyLine { id: number; symbol: string; qty: number }
-function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBalance, onMoveFromCasa }: { defaultSymbol: string; suggestions: string[]; available: number; casaAccount: string; casaBalance: number; onMoveFromCasa: (amt: number) => void }) {
-  let seq = 1
-  const [lines, setLines] = useState<BuyLine[]>(() => [{ id: seq++, symbol: defaultSymbol, qty: 1000 }])
+const FILL_TERMS = ['Normal', 'Fill or Kill', 'Immediate']
+const CASH_ACCOUNTS = ['Primary AED', 'Settlement AED', 'USD Sub-account']
+const CUSTODIANS = ['FAB Custody', 'HSBC', 'Citi', 'Self-custody']
+
+// ─── Buy panel (BLUE) — single order (one stock at a time) ───────────────────
+function BuyPanel({ defaultSymbol, available, casaAccount, casaBalance, onMoveFromCasa, options, holdings, client }: { defaultSymbol: string; available: number; casaAccount: string; casaBalance: number; onMoveFromCasa: (amt: number) => void; options: OrderOptions; holdings: PortfolioPosition[]; client: string }) {
+  const [symbol, setSymbol] = useState(defaultSymbol)
+  const [qty, setQty] = useState(1000)
+  const [limit, setLimit] = useState<number | undefined>(undefined)
+  const [showDetails, setShowDetails] = useState(false)
+  const [details, setDetails] = useState({ cashAccount: CASH_ACCOUNTS[0], discVolume: 0, fillTerm: FILL_TERMS[0], custodian: CUSTODIANS[0], contract: '', comments: '', orderOriginator: '', suspended: false })
+  const [sim, setSim] = useState<{ tone: 'ok' | 'warn'; lines: string[] } | null>(null)
   const notify = useToast()
   const price = usePrices()
   const px = (sym: string) => price(sym)?.last ?? priceOf(sym)
+  const isLimit = options.orderType === 'Limit'
+  // Price used for costing: the broker's limit when set, else the live quote.
+  const effPx = isLimit ? (limit ?? px(symbol)) : px(symbol)
+  const total = qty * effPx
+  const fees = feeFor(total)
+  const short = Math.max(0, Math.round(total + fees - available))
 
-  // Follow the Market Watch: when the filtered stock changes, prefill it into
-  // the first Buy line (context-based prefill from the spec).
-  useEffect(() => {
-    setLines((p) => (p.length ? [{ ...p[0], symbol: defaultSymbol }, ...p.slice(1)] : p))
-  }, [defaultSymbol])
+  // Quote + position derived from the selected symbol and the client's holdings.
+  const symObj = FULL_MARKET.find((s) => s.symbolShortName === symbol)
+  const live = price(symbol)
+  const chg = live?.changePct ?? symObj?.changePct ?? 0
+  const dayLow = symObj?.low ?? 0
+  const dayHigh = symObj?.high ?? 0
+  const last = px(symbol)
+  const rangePct = dayHigh > dayLow ? Math.min(100, Math.max(0, ((last - dayLow) / (dayHigh - dayLow)) * 100)) : 50
+  const bid = symObj?.bidPrice ?? 0
+  const offer = symObj?.offerPrice ?? 0
+  const mid = (bid + offer) / 2
+  const spreadPct = offer > bid ? Math.min(100, Math.max(0, ((last - bid) / (offer - bid)) * 100)) : 50
+  const holding = holdings.find((h) => h.symbol === symbol)
+  const availShares = holding?.available ?? 0
+  const outSellShares = holding ? Math.max(0, holding.quantity - holding.available) : 0
+  const purchasePower = available + casaBalance
 
-  const add = () => {
-    const next = suggestions.find((s) => !lines.some((l) => l.symbol === s)) ?? FULL_MARKET[0].symbolShortName
-    setLines((p) => [...p, { id: seq++ + p.length, symbol: next, qty: 1000 }])
+  // Follow the Market Watch: when the filtered stock changes, load it into the
+  // ticket (context-based prefill). A fresh symbol resets the manual limit.
+  useEffect(() => { setSymbol(defaultSymbol); setLimit(undefined) }, [defaultSymbol])
+  useEffect(() => { setSim(null) }, [symbol, qty, limit, options.orderType])
+
+  const validate = () => {
+    const errs: string[] = []
+    if (qty <= 0) errs.push('Quantity must be greater than 0.')
+    if (isLimit && (limit ?? px(symbol)) <= 0) errs.push('Limit price must be greater than 0.')
+    if (options.condition === 'Minimum Fill' && (options.minFillQty ?? 0) > qty) errs.push('Minimum fill exceeds the order quantity.')
+    if (total + fees > available) errs.push(`Order exceeds available cash (${fmtMoney(available)}).`)
+    return errs
   }
-  const update = (id: number, patch: Partial<BuyLine>) => setLines((p) => p.map((l) => (l.id === id ? { ...l, ...patch } : l)))
-  const remove = (id: number) => setLines((p) => (p.length > 1 ? p.filter((l) => l.id !== id) : p))
-  const total = lines.reduce((s, l) => s + l.qty * px(l.symbol), 0)
-  const short = Math.max(0, Math.round(total - available))
+  const placeOrder = () => {
+    const errs = validate()
+    if (errs.length) { setSim({ tone: 'warn', lines: errs }); return }
+    notify(`Buy order placed — ${fmtInt(qty)} ${symbol} · ${optionsSuffix(options)}`, 'buy')
+    setQty(1000); setLimit(undefined); setSim(null)
+  }
+  const simulate = () => {
+    const errs = validate()
+    setSim(errs.length ? { tone: 'warn', lines: errs } : {
+      tone: 'ok',
+      lines: [
+        `Buy ${fmtInt(qty)} ${symbol} @ ${isLimit ? fmtPrice(effPx) : 'Market'}`,
+        `Trade amount ${fmtMoney(total)} · Fees ${fmtMoney(fees)}`,
+        `Order amount ${fmtMoney(total + fees)}`,
+      ],
+    })
+  }
+  const clearTicket = () => {
+    setQty(1000); setLimit(undefined); setSim(null)
+    setDetails({ cashAccount: CASH_ACCOUNTS[0], discVolume: 0, fillTerm: FILL_TERMS[0], custodian: CUSTODIANS[0], contract: '', comments: '', orderOriginator: '', suspended: false })
+  }
+  const printTicket = () => {
+    const now = new Date()
+    const rows: [string, string][] = [
+      ['Client', client],
+      ['Portfolio', options.portfolio],
+      ['Symbol', symbol],
+      ['Side', 'BUY'],
+      ['Order Type', options.orderType],
+      ['Quantity', fmtInt(qty)],
+      ['Order Price', isLimit ? fmtPrice(effPx) : 'Market'],
+      ['Good Till', options.goodTill + (options.goodTill === 'GTD' && options.expiry ? ` (${options.expiry})` : '')],
+      ['Condition', options.condition + (options.condition === 'Minimum Fill' && options.minFillQty ? ` (min ${fmtInt(options.minFillQty)})` : '')],
+      ['Cash Account', details.cashAccount],
+      ['Custodian', details.custodian],
+      ['Fill Term', details.fillTerm],
+      ['Disc. Volume', fmtInt(details.discVolume)],
+      ['Contract', details.contract || '—'],
+      ['Order Originator', details.orderOriginator || '—'],
+      ['Comments', details.comments || '—'],
+      ['Trade Amount', fmtMoney(total) + ' AED'],
+      ['Fees', fmtMoney(fees) + ' AED'],
+      ['Order Amount', fmtMoney(total + fees) + ' AED'],
+    ]
+    const amtKeys = ['Trade Amount', 'Fees', 'Order Amount']
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Order Ticket — ${symbol}</title>
+      <style>
+        *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:32px;max-width:640px;margin:0 auto}
+        .hd{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0062ff;padding-bottom:10px;margin-bottom:6px}
+        h1{font-size:18px;margin:0;color:#0b1b4d} .badge{background:#0062ff;color:#fff;font-size:11px;font-weight:bold;padding:3px 8px;border-radius:4px}
+        .sub{color:#666;font-size:11px;margin-bottom:18px}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        td{padding:7px 8px;border-bottom:1px solid #ececec} td.k{color:#666;width:42%}
+        tr.amt td{font-weight:bold} tr.amt td.k{font-weight:normal}
+        .total td{border-top:2px solid #0062ff;font-size:15px;color:#0b1b4d}
+        .foot{margin-top:22px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:10px}
+      </style></head><body>
+      <div class="hd"><h1>FAB &times; Trade — Order Ticket</h1><span class="badge">BUY</span></div>
+      <div class="sub">Generated ${now.toLocaleString()}</div>
+      <table>${rows.map(([k, v]) => `<tr class="${k === 'Order Amount' ? 'amt total' : amtKeys.includes(k) ? 'amt' : ''}"><td class="k">${k}</td><td>${v}</td></tr>`).join('')}</table>
+      <div class="foot">Broker order ticket generated by FAB &times; Trade for record purposes. Not a contract note.</div>
+      </body></html>`
+    const iframe = document.createElement('iframe')
+    Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow?.document
+    if (!doc) { document.body.removeChild(iframe); return }
+    doc.open(); doc.write(html); doc.close()
+    iframe.contentWindow?.focus()
+    setTimeout(() => {
+      iframe.contentWindow?.print()
+      setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe) }, 800)
+    }, 250)
+    notify(`Order ticket sent to printer — ${symbol}`, 'buy')
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-xl border-2 border-[#0062ff] bg-[rgba(0,98,255,0.05)] shadow-[0_0_0_1px_rgba(0,98,255,0.04),inset_0_1px_0_rgba(0,98,255,0.08)]">
       <div className="flex items-center justify-between px-3 py-3 text-white" style={{ background: 'linear-gradient(135deg, #0062ff 0%, #0040cc 100%)' }}>
         <div className="flex items-baseline gap-2">
           <span className="text-[17px] font-black uppercase tracking-widest">Buy</span>
-          <span className="text-[10px] font-medium text-white/50">↑</span>
+          <span className="text-[10px] font-medium text-white/50">single order ↑</span>
         </div>
-        <button onClick={add} className="rounded-md bg-white/20 px-2.5 py-1 text-[11px] font-semibold ring-1 ring-white/20 hover:bg-white/30">+ Add line</button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto p-2.5">
-        {lines.map((l) => (
-          <div key={l.id} className="flex items-center gap-2 rounded-lg bg-[rgba(0,98,255,0.07)] p-2 ring-1 ring-[rgba(0,98,255,0.18)] transition-colors hover:bg-[rgba(0,98,255,0.11)]">
-            <select
-              value={l.symbol}
-              onChange={(e) => update(l.id, { symbol: e.target.value })}
-              className="h-8 min-w-0 flex-1 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[12px] text-content outline-none focus:border-[#5b9bff]"
-            >
-              {FULL_MARKET.map((s) => (
-                <option key={s.symbolShortName} value={s.symbolShortName} className="bg-surface">{s.symbolShortName}</option>
-              ))}
-            </select>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-2.5">
+        <div className="flex items-center gap-2 rounded-lg bg-[rgba(0,98,255,0.07)] p-2 ring-1 ring-[rgba(0,98,255,0.18)]">
+          <SymbolCombo value={symbol} onChange={(s) => { setSymbol(s); setLimit(undefined) }} />
+          <input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(Math.max(0, +e.target.value))}
+            title="Quantity"
+            className="h-8 w-[68px] rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] text-content outline-none focus:border-[#5b9bff]"
+          />
+          {isLimit ? (
             <input
               type="number"
-              value={l.qty}
-              onChange={(e) => update(l.id, { qty: Math.max(0, +e.target.value) })}
-              className="h-8 w-24 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] text-content outline-none focus:border-[#5b9bff]"
+              step="0.001"
+              value={limit ?? Number(px(symbol).toFixed(3))}
+              onChange={(e) => setLimit(Math.max(0, +e.target.value))}
+              title="Limit price"
+              className="h-8 w-[72px] rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] tabular-nums text-[#9cc0ff] outline-none focus:border-[#5b9bff]"
             />
-            <div className="flex w-24 shrink-0 flex-col items-end gap-0.5">
+          ) : (
+            <div className="flex w-[72px] shrink-0 flex-col items-end gap-0.5">
               <div className="flex items-center gap-1">
-                <span className="text-[11px] tabular-nums text-[#9cc0ff]">{fmtPrice(px(l.symbol))}</span>
-                {(() => { const chg = price(l.symbol)?.changePct ?? 0; return <span className={`rounded px-1 py-px text-[9px] font-bold tabular-nums ring-1 ${chg >= 0 ? 'bg-[rgba(47,208,122,0.1)] text-up ring-[rgba(47,208,122,0.2)]' : 'bg-[rgba(255,107,114,0.1)] text-down ring-[rgba(255,107,114,0.2)]'}`}>{chg >= 0 ? '+' : ''}{chg.toFixed(2)}%</span> })()}
+                <span className="text-[11px] tabular-nums text-[#9cc0ff]">{fmtPrice(px(symbol))}</span>
+                <span className="rounded bg-[rgba(255,255,255,0.08)] px-1 py-px text-[9px] font-bold tabular-nums text-white/70">MKT</span>
               </div>
-              <span className="text-[9px] tabular-nums text-content-subtle">{fmtMoney(l.qty * px(l.symbol))}</span>
             </div>
-            <button onClick={() => remove(l.id)} className="shrink-0 text-content-muted hover:text-down" title="Remove line" aria-label="Remove line">✕</button>
+          )}
+          <span className="w-[76px] shrink-0 text-right text-[10px] tabular-nums text-content-subtle">{fmtMoney(total)}</span>
+        </div>
+
+        {/* ── Quote — always visible (broker glances at this constantly) ── */}
+        <div className="rounded-lg border border-[rgba(0,98,255,0.15)] bg-[rgba(0,98,255,0.03)] p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-[#9cc0ff]">Quote</span>
+            <span className={`text-[11px] font-semibold tabular-nums ${chg >= 0 ? 'text-up' : 'text-down'}`}>{chg >= 0 ? '+' : ''}{chg.toFixed(2)}%</span>
           </div>
-        ))}
+          <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+            <Stat label="Last" value={fmtPrice(last)} />
+            <Stat label="Prev" value={fmtPrice(symObj?.prevClose ?? 0)} />
+            <Stat label="Open" value={fmtPrice(symObj?.openPrice ?? 0)} />
+            <Stat label="Bid" value={`${fmtPrice(bid)} ×${fmtInt(symObj?.bidSize ?? 0)}`} />
+            <Stat label="Offer" value={`${fmtPrice(offer)} ×${fmtInt(symObj?.offerSize ?? 0)}`} />
+            <Stat label="Turnover" value={fmtMoney(symObj?.value ?? 0)} />
+          </div>
+          <div className="mt-2 flex flex-col gap-1.5">
+            <RangeBar leftLabel="T.LOW" leftVal={fmtPrice(dayLow)} rightLabel="T.HIGH" rightVal={fmtPrice(dayHigh)} pct={rangePct} />
+            <RangeBar leftLabel="MID" leftVal={fmtPrice(mid)} rightLabel="NAT" rightVal={fmtPrice(last)} pct={spreadPct} />
+          </div>
+          <div className="mt-1.5 text-[9px] tabular-nums text-content-subtle">
+            Last Qty {fmtInt(symObj?.trades ?? 0)} · 52w {fmtPrice(symObj?.weekHigh52 ?? 0)} / {fmtPrice(symObj?.weekLow52 ?? 0)}
+          </div>
+        </div>
+
+        {/* ── Position — always visible (needed to size the order) ── */}
+        <div className="rounded-lg border border-[rgba(0,98,255,0.15)] bg-[rgba(0,98,255,0.03)] p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-[#9cc0ff]">Position</span>
+            <button
+              onClick={() => notify(`Cash position loaded — ${fmtMoney(purchasePower)} available`, 'buy')}
+              className="text-[10px] font-semibold text-[#9cc0ff] hover:text-white"
+            >
+              ↻ Load cash position
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+            <Stat label="Purchase Power" value={fmtMoney(purchasePower)} />
+            <Stat label="Cash Amount" value={fmtMoney(available)} />
+            <Stat label="Blocked" value={fmtMoney(0)} />
+            <Stat label="Outstanding Buy" value={fmtMoney(0)} />
+            <Stat label="Avail. Shares" value={fmtInt(availShares)} />
+            <Stat label="Out. Sell Shares" value={fmtInt(outSellShares)} />
+          </div>
+        </div>
+
+        {/* ── Advanced details — tucked behind one toggle (rarely changed) ── */}
+        <div className="rounded-lg border border-[rgba(0,98,255,0.15)] bg-[rgba(0,98,255,0.03)]">
+          <button onClick={() => setShowDetails((v) => !v)} className="flex w-full items-center justify-between px-2.5 py-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-content-muted">
+              Advanced details
+              {details.suspended && <span className="ml-2 rounded bg-[rgba(255,170,0,0.14)] px-1 py-px text-[9px] font-bold text-warning">Suspended</span>}
+            </span>
+            <svg className={`text-content-muted transition-transform ${showDetails ? 'rotate-180' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          {showDetails && (
+            <div className="flex flex-col gap-2.5 border-t border-[rgba(0,98,255,0.12)] p-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <BuyField label="Cash Account">
+                  <select value={details.cashAccount} onChange={(e) => setDetails((d) => ({ ...d, cashAccount: e.target.value }))} className={D_IN}>
+                    {CASH_ACCOUNTS.map((c) => <option key={c} value={c} className="bg-surface">{c}</option>)}
+                  </select>
+                </BuyField>
+                <BuyField label="Disc. Volume">
+                  <input type="number" min={0} value={details.discVolume || ''} onChange={(e) => setDetails((d) => ({ ...d, discVolume: Math.max(0, +e.target.value) }))} placeholder="0" className={`${D_IN} text-right tabular-nums`} />
+                </BuyField>
+                <BuyField label="Fill Term">
+                  <select value={details.fillTerm} onChange={(e) => setDetails((d) => ({ ...d, fillTerm: e.target.value }))} className={D_IN}>
+                    {FILL_TERMS.map((f) => <option key={f} value={f} className="bg-surface">{f}</option>)}
+                  </select>
+                </BuyField>
+                <BuyField label="Custodian">
+                  <select value={details.custodian} onChange={(e) => setDetails((d) => ({ ...d, custodian: e.target.value }))} className={D_IN}>
+                    {CUSTODIANS.map((c) => <option key={c} value={c} className="bg-surface">{c}</option>)}
+                  </select>
+                </BuyField>
+                <BuyField label="Contract">
+                  <input type="text" value={details.contract} onChange={(e) => setDetails((d) => ({ ...d, contract: e.target.value }))} placeholder="Ref…" className={D_IN} />
+                </BuyField>
+                <BuyField label="Order Originator">
+                  <input type="text" value={details.orderOriginator} onChange={(e) => setDetails((d) => ({ ...d, orderOriginator: e.target.value }))} placeholder="Desk / advisor" className={D_IN} />
+                </BuyField>
+              </div>
+              <BuyField label="Comments">
+                <input type="text" value={details.comments} onChange={(e) => setDetails((d) => ({ ...d, comments: e.target.value }))} placeholder="Optional note" className={D_IN} />
+              </BuyField>
+              <label className="flex items-center gap-2 text-[11px] text-content-muted">
+                <input type="checkbox" checked={details.suspended} onChange={(e) => setDetails((d) => ({ ...d, suspended: e.target.checked }))} className="h-3.5 w-3.5 accent-[#0062ff]" />
+                Suspended
+              </label>
+              <div className="text-[9px] text-content-subtle">Expiry date &amp; Min. quantity are set in the order options above.</div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="border-t border-[rgba(0,98,255,0.25)] px-3 py-2">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Est. total</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Trade Amount</div>
             <div className="text-[15px] font-black tabular-nums text-content">{fmtMoney(total)}</div>
           </div>
           <div className="text-right">
             <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Available</div>
             <div className="text-[13px] font-semibold tabular-nums text-content-muted">{fmtMoney(available)}</div>
           </div>
+        </div>
+        <div className="mt-1 flex items-center justify-between text-[10px] tabular-nums text-content-subtle">
+          <span>Fees {fmtMoney(fees)}</span>
+          <span>Order Amount {fmtMoney(total + fees)}</span>
         </div>
 
         {/* Only when there isn't enough cash: warn, and reveal the CASA top-up. */}
@@ -293,29 +399,49 @@ function BuyPanel({ defaultSymbol, suggestions, available, casaAccount, casaBala
           </div>
         )}
 
+        {/* Simulate result / validation errors */}
+        {sim && (
+          <div className={`mt-2 rounded-md border px-2.5 py-2 text-[11px] ${sim.tone === 'ok' ? 'border-[rgba(0,98,255,0.4)] bg-[rgba(0,98,255,0.08)]' : 'border-[rgba(255,170,0,0.45)] bg-[rgba(255,170,0,0.1)]'}`}>
+            <div className={`mb-0.5 text-[9px] font-bold uppercase tracking-wide ${sim.tone === 'ok' ? 'text-[#9cc0ff]' : 'text-warning'}`}>
+              {sim.tone === 'ok' ? 'Simulation' : 'Cannot place'}
+            </div>
+            {sim.lines.map((l, i) => <div key={i} className="tabular-nums text-content-muted">{sim.tone === 'ok' ? '· ' : '⚠ '}{l}</div>)}
+          </div>
+        )}
+
         <button
-          onClick={() => notify(`Buy order placed — ${lines.length} instrument${lines.length === 1 ? '' : 's'}`, 'buy')}
-          className="btn-glow-blue mt-2 w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110"
+          onClick={placeOrder}
+          disabled={qty <= 0}
+          className="btn-glow-blue mt-2 w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40"
           style={{ background: 'linear-gradient(135deg, #0062ff 0%, #003dcc 100%)' }}
         >
-          ↑ Place {lines.length} Buy{lines.length === 1 ? '' : 's'}
+          ↑ Place Buy Order
         </button>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <button onClick={simulate} className="rounded-md border border-[rgba(0,98,255,0.25)] bg-[rgba(0,98,255,0.06)] py-1.5 text-[11px] font-semibold text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.12)]">Simulate</button>
+          <button onClick={clearTicket} className="rounded-md border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] py-1.5 text-[11px] font-semibold text-content-muted hover:bg-[rgba(255,255,255,0.08)] hover:text-content">Clear</button>
+          <button onClick={printTicket} className="rounded-md border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] py-1.5 text-[11px] font-semibold text-content-muted hover:bg-[rgba(255,255,255,0.08)] hover:text-content">Print</button>
+        </div>
       </div>
     </div>
   )
 }
 
 // ─── Sell panel (RED) — from holdings, multiple line items ────────────────────
-function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
+function SellPanel({ holdings, options }: { holdings: PortfolioPosition[]; options: OrderOptions }) {
   const [qty, setQty] = useState<Record<string, number>>({})
+  const [limitPx, setLimitPx] = useState<Record<string, number>>({})
   const notify = useToast()
   const price = usePrices()
+  const isLimit = options.orderType === 'Limit'
   const px = (h: PortfolioPosition) => price(h.symbol)?.last ?? h.evalPrice
+  const sellPx = (h: PortfolioPosition) => (isLimit ? (limitPx[h.symbol] ?? px(h)) : px(h))
   const set = (sym: string, n: number, max: number) => {
     setQty((p) => ({ ...p, [sym]: Math.max(0, Math.min(n, max)) }))
   }
   const selected = holdings.filter((h) => (qty[h.symbol] ?? 0) > 0)
-  const total = selected.reduce((s, h) => s + (qty[h.symbol] ?? 0) * px(h), 0)
+  const total = selected.reduce((s, h) => s + (qty[h.symbol] ?? 0) * sellPx(h), 0)
+  const fees = feeFor(total)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-xl border-2 border-[#e0383d] bg-[rgba(224,56,61,0.05)] shadow-[0_0_0_1px_rgba(224,56,61,0.04),inset_0_1px_0_rgba(224,56,61,0.08)]">
@@ -337,10 +463,21 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
                   <div className="text-[13px] font-bold text-content">{h.symbol}</div>
                   <div className="text-[9px] tabular-nums text-content-subtle">{fmtInt(h.available)} avail · {fmtPrice(px(h))}</div>
                 </div>
+                {isLimit && (
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={limitPx[h.symbol] ?? Number(px(h).toFixed(3))}
+                    onChange={(e) => setLimitPx((p) => ({ ...p, [h.symbol]: Math.max(0, +e.target.value) }))}
+                    title="Limit price"
+                    className="h-7 w-[68px] rounded border border-[rgba(224,56,61,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] tabular-nums text-[#ff9ea2] outline-none focus:border-down"
+                  />
+                )}
                 <input
                   type="number"
                   value={qty[h.symbol] ?? 0}
                   onChange={(e) => set(h.symbol, +e.target.value, h.available)}
+                  title="Quantity"
                   className="h-7 w-20 rounded border border-[rgba(224,56,61,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] text-content outline-none focus:border-down"
                 />
               </div>
@@ -349,15 +486,19 @@ function SellPanel({ holdings }: { holdings: PortfolioPosition[] }) {
         )}
       </div>
       <div className="border-t border-[rgba(224,56,61,0.25)] px-3 py-2">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-end justify-between">
           <div>
             <div className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Est. total</div>
             <div className="text-[15px] font-black tabular-nums text-content">{fmtMoney(total)}</div>
           </div>
+          <div className="text-right text-[10px] tabular-nums text-content-subtle">
+            <div>Est. commission {fmtMoney(fees)}</div>
+            <div>Net {fmtMoney(Math.max(0, total - fees))}</div>
+          </div>
         </div>
         <button
           disabled={selected.length === 0}
-          onClick={() => notify(`Sell order placed — ${selected.length} instrument${selected.length === 1 ? '' : 's'}`, 'sell')}
+          onClick={() => notify(`Sell order placed — ${selected.length} instrument${selected.length === 1 ? '' : 's'} · ${optionsSuffix(options)}`, 'sell')}
           className={`w-full rounded-lg py-2.5 text-[13px] font-black uppercase tracking-widest text-white transition-all hover:brightness-110 disabled:opacity-40 ${selected.length > 0 ? 'btn-glow-red' : ''}`}
           style={{ background: 'linear-gradient(135deg, #e0383d 0%, #b02428 100%)' }}
         >
@@ -390,6 +531,12 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
   // Funds: available investment cash + the linked CASA account it can pull from.
   const [cash, setCash] = useState(customer.cash)
   const [casaBal, setCasaBal] = useState(customer.casaBalance)
+
+  // Order-ticket options shared by the Buy + Sell panels (portfolio is required).
+  const [orderOptions, setOrderOptions] = useState<OrderOptions>({ portfolio: PORTFOLIOS[0], orderType: 'Market', goodTill: 'Day', condition: 'None', expiry: '', minFillQty: 0 })
+  const setOpt = <K extends keyof OrderOptions>(k: K, v: OrderOptions[K]) => setOrderOptions((o) => ({ ...o, [k]: v }))
+  // Per-client flow: single order (one stock at a time) or basket (many, staged).
+  const [orderMode, setOrderMode] = useState<'single' | 'basket'>('single')
   const moveFromCasa = (amt: number) => {
     const m = Math.max(0, Math.min(Math.round(amt), casaBal))
     if (!m) return
@@ -522,11 +669,119 @@ function CustomerPanel({ customer, watchSymbol, onClose, vip, onToggleVip }: { c
           </div>
         </div>
 
+        {/* Order flow — single order (default) or basket, scoped to this client */}
+        <div className="flex items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-md border border-[rgba(0,98,255,0.25)]">
+            {(['single', 'basket'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setOrderMode(m)}
+                className={`px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${orderMode === m ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.12)]'}`}
+              >
+                {m === 'single' ? 'Single Order' : 'Basket Order'}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-content-subtle">
+            {orderMode === 'single' ? 'One stock at a time' : 'Stage many orders — executed one by one'}
+          </span>
+        </div>
+
+        {orderMode === 'basket' ? (
+          /* Basket, scoped to this open client (no separate client selector) */
+          <BasketOrder client={`${customer.sif} — ${customer.name}`} />
+        ) : (
+        <>
+        {/* Order options — apply to both the Buy and Sell tickets below */}
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2 rounded-xl border border-[rgba(0,98,255,0.15)] bg-[#0a0c12] px-3 py-2.5 shadow-[0_2px_20px_rgba(0,0,0,0.3)]">
+          <label className="flex min-w-0 flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-[#5b9bff]">Portfolio<span className="ml-0.5 text-down">*</span></span>
+            <select
+              value={orderOptions.portfolio}
+              onChange={(e) => setOpt('portfolio', e.target.value)}
+              className="h-8 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[12px] text-content outline-none focus:border-[#5b9bff]"
+            >
+              {PORTFOLIOS.map((p) => <option key={p} value={p} className="bg-surface">{p}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Order type</span>
+            <div className="inline-flex overflow-hidden rounded border border-[rgba(0,98,255,0.22)]">
+              {ORDER_TYPES.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setOpt('orderType', t)}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${orderOptions.orderType === t ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-content-muted hover:text-content'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Good till</span>
+            <div className="inline-flex overflow-hidden rounded border border-[rgba(0,98,255,0.22)]">
+              {GOOD_TILL.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setOpt('goodTill', g)}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${orderOptions.goodTill === g ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-content-muted hover:text-content'}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-content-subtle">Condition</span>
+            <div className="inline-flex overflow-hidden rounded border border-[rgba(0,98,255,0.22)]">
+              {CONDITIONS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setOpt('condition', c)}
+                  title={c}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${orderOptions.condition === c ? 'bg-[#0062ff] text-white' : 'bg-[#0b0e15] text-content-muted hover:text-content'}`}
+                >
+                  {CONDITION_LABEL[c]}
+                </button>
+              ))}
+            </div>
+          </label>
+          {/* Good-Till-Date needs an expiry date */}
+          {orderOptions.goodTill === 'GTD' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#5b9bff]">Expiry<span className="ml-0.5 text-down">*</span></span>
+              <input
+                type="date"
+                value={orderOptions.expiry ?? ''}
+                onChange={(e) => setOpt('expiry', e.target.value)}
+                className="h-8 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-[12px] text-content outline-none focus:border-[#5b9bff]"
+              />
+            </label>
+          )}
+          {/* Minimum-fill needs a minimum quantity */}
+          {orderOptions.condition === 'Minimum Fill' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#5b9bff]">Min. qty<span className="ml-0.5 text-down">*</span></span>
+              <input
+                type="number"
+                min={0}
+                value={orderOptions.minFillQty || ''}
+                onChange={(e) => setOpt('minFillQty', Math.max(0, +e.target.value))}
+                placeholder="0"
+                className="h-8 w-24 rounded border border-[rgba(0,98,255,0.22)] bg-[#0b0e15] px-2 text-right text-[12px] tabular-nums text-content outline-none focus:border-[#5b9bff]"
+              />
+            </label>
+          )}
+        </div>
+
         {/* Buy + Sell — below the portfolio, side by side, always open */}
         <div className="flex min-h-[260px] gap-3">
-          <BuyPanel defaultSymbol={buyDefault} suggestions={suggestions} available={cash} casaAccount={customer.casa} casaBalance={casaBal} onMoveFromCasa={moveFromCasa} />
-          <SellPanel holdings={liveHoldings} />
+          <BuyPanel defaultSymbol={buyDefault} available={cash} casaAccount={customer.casa} casaBalance={casaBal} onMoveFromCasa={moveFromCasa} options={orderOptions} holdings={liveHoldings} client={`${customer.sif} — ${customer.name}`} />
+          <SellPanel holdings={liveHoldings} options={orderOptions} />
         </div>
+        </>
+        )}
       </div>
     </section>
   )
@@ -805,11 +1060,6 @@ function CustomerArea({ watchSymbol, compact, snapshotRef }: { watchSymbol: stri
 
 // ─── Order Placement desk (split screen) ─────────────────────────────────────
 export default function BrokerDesk({ compact = false, onDock }: { compact?: boolean; onDock?: () => void }) {
-  // Empty by default so each customer's Buy prefills THEIR most-traded stock
-  // (usualStocks[0]); picking a symbol in Market Watch overrides it.
-  const [watchSymbol, setWatchSymbol] = useState<string>('')
-  // Market Watch can be hidden (e.g. when docked into a narrow area).
-  const [showWatch, setShowWatch] = useState(!compact)
   const [toasts, setToasts] = useState<Toast[]>([])
   const idRef = useRef(0)
   const notify = useCallback((msg: string, tone: ToastTone) => {
@@ -833,15 +1083,6 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
             <span className="h-4 w-[3px] rounded-full bg-[#0062ff] shadow-[0_0_6px_rgba(0,98,255,0.6)]" />
             <span className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#5b9bff]">Order Placement</span>
           </div>
-          <span className="h-4 w-px shrink-0 bg-[rgba(0,98,255,0.2)]" />
-          <button
-            onClick={() => setShowWatch((v) => !v)}
-            title="Show or hide the Market Watch panel"
-            className="inline-flex items-center gap-1.5 rounded-md border border-[rgba(0,98,255,0.2)] bg-[rgba(0,98,255,0.06)] px-2.5 py-1 text-[11px] font-medium text-[#9cc0ff] hover:bg-[rgba(0,98,255,0.12)]"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></svg>
-            {showWatch ? 'Hide' : 'Show'} Market Watch
-          </button>
           {onDock && (
             <button
               onClick={handleDock}
@@ -853,16 +1094,11 @@ export default function BrokerDesk({ compact = false, onDock }: { compact?: bool
             </button>
           )}
         </div>
-        {/* Wide: Market Watch on the left. Docked (compact): stacked — Market
-            Watch on top, the CIF/client area below. Hidden → CIF takes it all. */}
-        <div className={`flex min-h-0 flex-1 gap-3 p-3 ${compact ? 'flex-col' : ''}`}>
-          {showWatch && (
-            <div className={compact ? 'h-[260px] shrink-0' : 'hidden w-[34%] min-w-[340px] max-w-[460px] md:block'}>
-              <MarketWatch symbol={watchSymbol} onPick={setWatchSymbol} />
-            </div>
-          )}
+        {/* Client area takes the full width — the CIF search + the searchable
+            symbol picker in the ticket replace the old Market Watch panel. */}
+        <div className="flex min-h-0 flex-1 gap-3 p-3">
           <div className="min-h-0 min-w-0 flex-1">
-            <CustomerArea watchSymbol={watchSymbol} compact={compact} snapshotRef={snapshotRef} />
+            <CustomerArea watchSymbol="" compact={compact} snapshotRef={snapshotRef} />
           </div>
         </div>
       </div>

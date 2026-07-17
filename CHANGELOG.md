@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.5.0
+
+- **Order Placement — single order is the primary flow** — the standard Buy ticket is now a pure single-order ticket: one stock, submit, then the next (buy EMAAR → submit → buy DAMAC → submit). No multi-line/"add line" in the standard buy window.
+- **Order Placement — Basket Order built in** — a Single Order / Basket Order toggle now lives inside the client panel (after selecting a CIF). Basket mode stages many orders (each line a separate order: symbol, side, type, qty, price, condition), reviewed together and executed **one by one** (Staged → Sending → Sent) or **Grouped** as a block. Re-stage resets them.
+- **Order Placement — mandatory order fields** — added a Portfolio selector (Regular / Margin / Margin Lending / US Market), Order Type (Market / Limit only — no stop-limit), Good Till (Day / GTC / GTD / IOC) and Condition (None / All-or-None / Minimum Fill) as fast one-click tabs. GTD reveals an Expiry date; Minimum Fill reveals a Min. Quantity. Price-driven entry: Limit mode gives an editable price per line.
+- **Order Placement — detailed ticket (Quote / Position / Details)** — the Buy ticket now shows an always-visible Quote block (Last, Bid ×qty, Offer ×qty, High, Low, Prev, Open, Turnover, Last Traded Qty, 52w H/L, % + T.LOW–T.HIGH and MID–NAT indicators) and Position block (Purchase Power, Cash, Blocked, Outstanding Buy, Available Shares, Outstanding Sell Shares, Load Cash Position). Rarely-changed fields (Cash Account, Disc. Volume, Fill Term, Custodian, Contract, Comments, Order Originator, Suspended) are tucked behind one "Advanced details" toggle.
+- **Order Placement — Simulate / Clear / Print** — Simulate runs a pre-trade validation and previews the trade/fees/net without sending; Clear resets the ticket; Print generates a formatted, printable broker order ticket (opens the print dialog). The footer shows Trade Amount · Fees · Order Amount.
+- **Order Placement — searchable symbol picker** — the symbol field (single order and basket "add symbol") is a type-to-search combobox: filter by code or name, ↑/↓ to move, Enter/click to pick, showing code · name · live price.
+- **Order Placement — Market Watch removed** — the left Market Watch panel and its toggle are gone; the client area now uses the full width. Symbol selection happens through the CIF search and the in-ticket symbol picker.
+- **Auto-updater — served from the company repository** — the update endpoint points at `apostrophy-ae/fab-security-desktop`. This release also ships from the previous location so installed apps update, then follow the company repository for future updates.
+
 ## v3.4.5
 
 - **Auto-updater — moved to company repository** — the update endpoint now points at `apostrophy-ae/fab-security-desktop` instead of the personal `Waleyeldin/lc-peakperf` repo. This is the bridge release: installed apps update to v3.4.5 from the old location, and from v3.4.5 onward all future updates are served from the company repository.
