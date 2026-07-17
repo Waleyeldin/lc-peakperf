@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FAB x Trade",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "identifier": "com.peakperf.lc",
   "build": {
     "frontendDist": "../dist",
@@ -31,7 +31,7 @@
       "endpoints": [
         "https://github.com/apostrophy-ae/fab-security-desktop/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgyNzVEQjREOEZGNERCODEKUldTQjIvU1BUZHQxZ2c2MFp3aEVQOXM5T1BTQlV0OFN4VmU1NU9UMmhxYytlMjlBQ3lUd2dQQVkK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFOUE0NzNGQTQ3MTc1RTAKUldUZ2RYR2tQMGVhM3JFSmlUYUZZYTA0S0lkN0F3Y2hSY05JV1IrNFZXOFcyMWNaYjUvNjI2VGoK"
     }
   },
   "bundle": {

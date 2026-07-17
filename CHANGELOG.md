@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.5.1
+
+- **Signing key rotated** — the updater signing key was rotated to a new keypair (public key `DE9A473FA47175E0`) so releases can be built and signed from the company repository. **One-time action:** because the key changed, apps installed with the previous key cannot auto-update to this build — install v3.5.1 fresh once, after which auto-updates resume normally.
+
 ## v3.5.0
 
 - **Order Placement — single order is the primary flow** — the standard Buy ticket is now a pure single-order ticket: one stock, submit, then the next (buy EMAAR → submit → buy DAMAC → submit). No multi-line/"add line" in the standard buy window.
